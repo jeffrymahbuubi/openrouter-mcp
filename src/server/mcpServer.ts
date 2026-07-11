@@ -20,7 +20,11 @@ import type { TextClient } from '../api/textClient.js'
 // Business logic
 import { createFileManager, type FileManager } from '../business/fileManager.js'
 import { validateGenerateImageParams } from '../business/inputValidator.js'
-import { createResponseBuilder, type ResponseBuilder } from '../business/responseBuilder.js'
+import {
+  createResponseBuilder,
+  type InlinePreview,
+  type ResponseBuilder,
+} from '../business/responseBuilder.js'
 import {
   createStructuredPromptGenerator,
   type FeatureFlags,
@@ -34,6 +38,7 @@ import { getConfig } from '../utils/config.js'
 import { Logger } from '../utils/logger.js'
 import { ensureExtension, getMimeTypeFromExtension } from '../utils/mimeUtils.js'
 import { SecurityManager } from '../utils/security.js'
+import { generateThumbnail } from '../utils/thumbnail.js'
 import { ErrorHandler } from './errorHandler.js'
 
 /**
@@ -346,8 +351,26 @@ export class MCPServerImpl {
         throw saveResult.error
       }
 
+      // Best-effort inline preview so MCP clients can render the image; the
+      // full-resolution file on disk is unaffected if this fails.
+      let preview: InlinePreview | undefined
+      if (configResult.data.inlinePreview) {
+        const thumbnail = await generateThumbnail(generationResult.data.imageData)
+        if (thumbnail.success) {
+          preview = thumbnail.data
+        } else {
+          this.logger.warn('mcp-server', 'Inline preview generation failed; returning path only', {
+            error: thumbnail.error.message,
+          })
+        }
+      }
+
       // Build response
-      return this.responseBuilder.buildSuccessResponse(generationResult.data, saveResult.data)
+      return this.responseBuilder.buildSuccessResponse(
+        generationResult.data,
+        saveResult.data,
+        preview
+      )
     }, 'image-generation')
 
     if (result.ok) {

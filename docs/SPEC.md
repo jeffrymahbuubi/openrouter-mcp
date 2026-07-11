@@ -180,17 +180,23 @@ Mirror the old `GEMINI_MODELS` map but env-driven:
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `OPENROUTER_API_KEY` | ✅ | — | OpenRouter API key. |
-| `OPENROUTER_TEXT_MODEL` | — | e.g. `google/gemini-2.5-flash` (⚠️ VERIFY) | Stage-1 prompt-enhancement model. |
-| `OPENROUTER_IMAGE_MODEL` | — | e.g. `google/gemini-2.5-flash-image-preview` (⚠️ VERIFY) | Image model for `fast`/`balanced`. |
-| `OPENROUTER_IMAGE_MODEL_HQ` | — | falls back to `OPENROUTER_IMAGE_MODEL` | Image model for `quality`. |
+| `OPENROUTER_TEXT_MODEL` | — | `google/gemini-3.5-flash` (verified 2026-07-11) | Stage-1 prompt-enhancement model. |
+| `OPENROUTER_IMAGE_MODEL` | — | `google/gemini-3.1-flash-image` (verified 2026-07-11) | Image model for `fast`/`balanced`. |
+| `OPENROUTER_IMAGE_MODEL_HQ` | — | falls back to `OPENROUTER_IMAGE_MODEL` (`.env.example` uses `google/gemini-3-pro-image`) | Image model for `quality`. |
 | `OPENROUTER_BASE_URL` | — | `https://openrouter.ai/api/v1` | Override endpoint if needed. |
 | `OPENROUTER_APP_URL` | — | — | Optional `HTTP-Referer` for OpenRouter attribution. |
 | `OPENROUTER_APP_TITLE` | — | — | Optional `X-Title` for OpenRouter attribution. |
 | `IMAGE_OUTPUT_DIR` | — | `./output` | Absolute path recommended. Kept from original. |
 | `IMAGE_QUALITY` | — | `fast` | `fast` \| `balanced` \| `quality`. Kept. |
 | `SKIP_PROMPT_ENHANCEMENT` | — | `false` | Kept — sends prompt straight to image model. |
+| `IMAGE_INLINE_PREVIEW` | — | `true` | Attach a downscaled JPEG preview (≤512px) inline so MCP clients render it; full-res still saved to disk. `false` = path-only. |
 
 Removed: `IMAGE_PROVIDER`, `GEMINI_API_KEY`, `OPENAI_API_KEY`.
+
+**Inline preview (added 2026-07-12):** `src/utils/thumbnail.ts` (jimp, pure-JS) builds the
+preview; `mcpServer` attaches it as an MCP `image` content block via
+`responseBuilder.buildSuccessResponse(..., preview)`. Best-effort — a thumbnail failure logs a
+warning and falls back to a path-only response.
 
 ## 8. Feature-folding rules (D4)
 

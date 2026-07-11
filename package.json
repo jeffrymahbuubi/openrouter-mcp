@@ -22,6 +22,14 @@
     "typescript"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeffrymahbuubi/mcp-image-openrouter.git"
+  },
+  "homepage": "https://github.com/jeffrymahbuubi/mcp-image-openrouter#readme",
+  "bugs": {
+    "url": "https://github.com/jeffrymahbuubi/mcp-image-openrouter/issues"
+  },
   "files": [
     "dist/**/*",
     "!dist/**/*.test.js",
@@ -32,6 +40,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
@@ -48,6 +57,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
+    "jimp": "^1.6.1",
     "openai": "^6.46.0"
   },
   "devDependencies": {

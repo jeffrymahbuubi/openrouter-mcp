@@ -24,19 +24,30 @@ All phases 0–10 done. `check:all` green (186 mocked tests); live end-to-end ve
   (later doc updates follow). `.gitignore` excludes `node_modules/`, `dist/`, `.env`,
   `output/`, `references/` (had its own nested `.git`), and ruflo artifacts.
 
+### Feature: inline image preview (2026-07-12) — ✅ done
+
+- New `src/utils/thumbnail.ts` (jimp, pure-JS): `generateThumbnail(Buffer)` →
+  downscaled JPEG (≤`THUMBNAIL_MAX_DIM`=512px, quality 60) as base64; only downscales,
+  never upscales; best-effort (returns `Err` on non-image input).
+- `IMAGE_INLINE_PREVIEW` config (default `true`); `McpContent` extended with an
+  `image` variant; `responseBuilder.buildSuccessResponse(…, preview?)` appends an MCP
+  `image` block; `mcpServer` generates the thumbnail after save (warns + path-only on
+  failure). So Claude Desktop renders the image inline; full-res still saved to disk.
+- TDD: 4 thumbnail tests + 1 config test + 2 integration tests (preview present /
+  absent). **Suite 193 tests green; `check:all` green.** Added `jimp` dependency.
+- npm publish-ready: `prepublishOnly: npm run build`, `repository`/`homepage`/`bugs`
+  metadata; `npm pack --dry-run` confirms only `dist`/`bin`/`skills`/`README`/`LICENSE`
+  ship (no `src`/tests/`.env`/`docs`/`output`). README has npx + publishing sections.
+
 ### Known follow-ups / ideas (not blocking)
 
-- **Distribution UX:** clients currently launch `node /abs/path/dist/index.js`. Cleaner
-  options: (a) `npm publish` then `npx -y mcp-image-openrouter` (needs a `prepublishOnly`
-  build + npm account; repo is private so `npx github:` won't work and `dist/` is
-  gitignored); (b) global install `npm i -g .` / `npm link` → bare `mcp-image-openrouter`
-  command. Not yet implemented.
-- **Inline image preview:** the tool returns the saved **file path** as a text/resource
-  descriptor (upstream design, to avoid the ~25k-token MCP limit — our PNGs are ~1.5MB).
-  So Claude Desktop shows the path, not an inline image. A future enhancement could return
-  a downscaled base64 preview (MCP `image` content) alongside the on-disk full file.
-- Optional: npm publish, CI workflow (`check:all` on push), genericize residual
-  `GeminiAPIError` naming, widen the image-model capability map.
+- **Inline image preview:** ✅ DONE (2026-07-12, see above) — Claude Desktop now renders the
+  image inline via a downscaled preview; full-res still on disk.
+- **Distribution / npx:** package is publish-ready (see above). Remaining is the user action
+  `npm login` + `npm publish` (user opted to publish public). After that, clients can use
+  `npx -y mcp-image-openrouter`. Local `node /abs/path/dist/index.js` still works too.
+- Optional: CI workflow (`check:all` on push), genericize residual `GeminiAPIError` naming,
+  widen the image-model capability map, downscale the ~5MB `docs/examples/` PNGs.
 
 ## ⏰ Standing reminders
 

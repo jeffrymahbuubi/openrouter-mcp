@@ -57,8 +57,20 @@ function buildPublicDetails(
 /**
  * Interface for response builder functionality
  */
+/**
+ * Optional base64 inline image preview to render in MCP clients.
+ */
+export interface InlinePreview {
+  data: string
+  mimeType: string
+}
+
 export interface ResponseBuilder {
-  buildSuccessResponse(generationResult: GeneratedImageResult, filePath: string): McpToolResponse
+  buildSuccessResponse(
+    generationResult: GeneratedImageResult,
+    filePath: string,
+    preview?: InlinePreview
+  ): McpToolResponse
   buildErrorResponse(error: BaseError | Error): McpToolResponse
 }
 
@@ -137,10 +149,12 @@ export function createResponseBuilder(): ResponseBuilder {
      */
     buildSuccessResponse(
       generationResult: GeneratedImageResult,
-      filePath: string
+      filePath: string,
+      preview?: InlinePreview
     ): McpToolResponse {
-      // File-based implementation: Always return file path, never base64
-      // This avoids MCP token limit issues (25,000 tokens max)
+      // The full-resolution image is always saved to disk and referenced by path
+      // (never returned inline) to avoid MCP token limits (~25,000 tokens). An
+      // optional small preview may be attached for clients that render images.
       const mimeType = resolveMimeType(generationResult.metadata.mimeType, filePath)
       const fileName = path.basename(filePath)
 
@@ -162,13 +176,23 @@ export function createResponseBuilder(): ResponseBuilder {
         },
       }
 
+      const content: McpToolResponse['content'] = [
+        {
+          type: 'text',
+          text: JSON.stringify(structuredContent),
+        },
+      ]
+
+      if (preview) {
+        content.push({
+          type: 'image',
+          data: preview.data,
+          mimeType: preview.mimeType,
+        })
+      }
+
       return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(structuredContent),
-          },
-        ],
+        content,
         isError: false,
       }
     },

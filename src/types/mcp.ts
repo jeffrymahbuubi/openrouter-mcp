@@ -102,12 +102,19 @@ export interface MCPServerConfig {
 }
 
 /**
- * Content types for MCP responses
+ * Content types for MCP responses.
+ * `image` carries a base64-encoded inline preview so clients can render it.
  */
-type McpContent = {
-  type: 'text'
-  text: string
-}
+type McpContent =
+  | {
+      type: 'text'
+      text: string
+    }
+  | {
+      type: 'image'
+      data: string
+      mimeType: string
+    }
 
 /**
  * MCP Tool Response format

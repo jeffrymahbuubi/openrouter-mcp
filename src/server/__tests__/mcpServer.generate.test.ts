@@ -6,7 +6,8 @@
  * image generation → save → response) without network or disk I/O.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Jimp } from 'jimp'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Err, Ok } from '../../types/result'
 import { ImageAPIError } from '../../utils/errors'
 
@@ -46,20 +47,29 @@ vi.mock('../../business/fileManager', () => ({
 
 import { MCPServerImpl } from '../mcpServer'
 
-const IMAGE_RESULT = {
-  imageData: Buffer.from('binary-image-bytes'),
-  metadata: {
-    model: 'google/gemini-3.1-flash-image',
-    provider: 'openrouter',
-    prompt: 'enhanced prompt',
-    mimeType: 'image/png',
-    timestamp: new Date('2026-07-11T00:00:00.000Z'),
-    inputImageProvided: false,
-  },
+const METADATA = {
+  model: 'google/gemini-3.1-flash-image',
+  provider: 'openrouter',
+  prompt: 'enhanced prompt',
+  mimeType: 'image/png',
+  timestamp: new Date('2026-07-11T00:00:00.000Z'),
+  inputImageProvided: false,
 }
 
-const ENV_KEYS = ['OPENROUTER_API_KEY', 'SKIP_PROMPT_ENHANCEMENT', 'IMAGE_OUTPUT_DIR'] as const
+// A real PNG so the (real) thumbnail generator can produce an inline preview.
+let realPng: Buffer
+
+const ENV_KEYS = [
+  'OPENROUTER_API_KEY',
+  'SKIP_PROMPT_ENHANCEMENT',
+  'IMAGE_OUTPUT_DIR',
+  'IMAGE_INLINE_PREVIEW',
+] as const
 const savedEnv: Record<string, string | undefined> = {}
+
+beforeAll(async () => {
+  realPng = await new Jimp({ width: 600, height: 400, color: 0x2288ccff }).getBuffer('image/png')
+})
 
 beforeEach(() => {
   for (const key of ENV_KEYS) {
@@ -71,7 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockGenerateFileName.mockReturnValue('image-test.png')
   mockGenerateText.mockResolvedValue(Ok('enhanced prompt'))
-  mockGenerateImage.mockResolvedValue(Ok(IMAGE_RESULT))
+  mockGenerateImage.mockResolvedValue(Ok({ imageData: realPng, metadata: METADATA }))
   mockSaveImage.mockResolvedValue(Ok('/abs/output/image-test.png'))
 })
 
@@ -152,5 +162,26 @@ describe('generate_image flow', () => {
     const payload = parseResponse(result)
     expect(payload.error.code).toBe('CONFIG_ERROR')
     expect(mockGenerateImage).not.toHaveBeenCalled()
+  })
+
+  it('attaches an inline image preview by default', async () => {
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_image', { prompt: 'a cat' })
+
+    const image = result.content.find((c) => c.type === 'image')
+    expect(image).toBeDefined()
+    expect((image as { mimeType: string }).mimeType).toBe('image/jpeg')
+    expect((image as { data: string }).data.length).toBeGreaterThan(0)
+  })
+
+  it('omits the inline preview when IMAGE_INLINE_PREVIEW=false', async () => {
+    process.env.IMAGE_INLINE_PREVIEW = 'false'
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_image', { prompt: 'a cat' })
+
+    expect(result.isError).toBe(false)
+    expect(result.content.find((c) => c.type === 'image')).toBeUndefined()
   })
 })

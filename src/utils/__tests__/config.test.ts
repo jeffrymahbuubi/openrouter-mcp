@@ -16,6 +16,7 @@ const OPENROUTER_ENV_VARS = [
   'IMAGE_OUTPUT_DIR',
   'IMAGE_QUALITY',
   'SKIP_PROMPT_ENHANCEMENT',
+  'IMAGE_INLINE_PREVIEW',
 ] as const
 
 function baseConfig() {
@@ -29,6 +30,7 @@ function baseConfig() {
     apiTimeout: 30000,
     skipPromptEnhancement: false,
     imageQuality: 'fast' as const,
+    inlinePreview: true,
   }
 }
 
@@ -144,6 +146,16 @@ describe('config', () => {
         expect(result.data.skipPromptEnhancement).toBe(true)
         expect(result.data.imageQuality).toBe('quality')
       }
+    })
+
+    it('enables inline preview by default and disables it only on explicit false', () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-valid-key-12345'
+      const on = getConfig()
+      expect(on.success && on.data.inlinePreview).toBe(true)
+
+      process.env.IMAGE_INLINE_PREVIEW = 'false'
+      const off = getConfig()
+      expect(off.success && off.data.inlinePreview).toBe(false)
     })
   })
 })

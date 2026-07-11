@@ -164,6 +164,28 @@ OPENROUTER_API_KEY = "your-openrouter-key"
 IMAGE_OUTPUT_DIR = "/absolute/path/to/images"
 ```
 
+#### Alternative: run via `npx` (once published to npm)
+
+After the package is published to npm, you can skip the local build and absolute paths entirely
+and let `npx` fetch and run it:
+
+```jsonc
+// Claude Desktop / Cursor
+{ "command": "npx", "args": ["-y", "mcp-image-openrouter"],
+  "env": { "OPENROUTER_API_KEY": "your-openrouter-key", "IMAGE_OUTPUT_DIR": "/absolute/path/to/images" } }
+```
+```bash
+# Claude Code
+claude mcp add mcp-image --scope user \
+  --env OPENROUTER_API_KEY=your-openrouter-key \
+  --env IMAGE_OUTPUT_DIR=/absolute/path/to/images \
+  -- npx -y mcp-image-openrouter
+```
+
+> `npx` needs Node/npx on the client's PATH. Claude Desktop (a GUI app) sometimes has a limited
+> PATH; if it can't find `npx`, use an absolute path to `npx`, or fall back to the local
+> `node /absolute/path/dist/index.js` form above.
+
 ⚠️ **Security Note:** Never commit your API key. Use environment-specific configuration.
 
 📁 **Path Requirements:** `IMAGE_OUTPUT_DIR` must be an absolute path; defaults to `./output`.
@@ -183,6 +205,7 @@ The directory is created automatically if missing.
 | `IMAGE_OUTPUT_DIR` | — | `./output` | Where images are saved (absolute path required for Claude Desktop). |
 | `IMAGE_QUALITY` | — | `fast` | Default quality preset: `fast` / `balanced` / `quality`. |
 | `SKIP_PROMPT_ENHANCEMENT` | — | `false` | Send prompts directly to the image model. |
+| `IMAGE_INLINE_PREVIEW` | — | `true` | Attach a small inline image preview to responses (see [Viewing results](#viewing-the-result)). Set `false` for path-only. |
 
 > Default model IDs were verified against OpenRouter on 2026-07-11 — see
 > [`docs/OPENROUTER_API.md`](docs/OPENROUTER_API.md) §4. Any image/text model available on
@@ -270,6 +293,21 @@ Ask for higher fidelity and the server routes to `OPENROUTER_IMAGE_MODEL_HQ`
 "Skip enhancement and use my prompt exactly as written"          (SKIP_PROMPT_ENHANCEMENT=true)
 ```
 
+## Viewing the result
+
+Every successful generation does two things:
+
+1. **Saves the full-resolution PNG** to your `IMAGE_OUTPUT_DIR` and returns its path (as a
+   `file://` resource) in the tool response — so you always have the original on disk.
+2. **Attaches a small inline preview** (a downscaled JPEG, ≤512px on the longest side) so MCP
+   clients that render images — like **Claude Desktop** — display the picture directly in the
+   chat. The full-resolution image is never sent inline (it would exceed MCP size limits); only
+   the lightweight preview is.
+
+So in Claude Desktop you'll typically **see the image inline** *and* get the saved file path for
+the full-resolution version. In clients that don't render inline images, open the saved file from
+`IMAGE_OUTPUT_DIR`. To turn previews off (path-only responses), set `IMAGE_INLINE_PREVIEW=false`.
+
 ## `generate_image` Tool — Parameters
 
 | Parameter | Type | Required | Description |
@@ -307,7 +345,34 @@ Ask for higher fidelity and the server routes to `OPENROUTER_IMAGE_MODEL_HQ`
 See [`docs/SPEC.md`](docs/SPEC.md) for the spec and
 [`docs/OPENROUTER_API.md`](docs/OPENROUTER_API.md) for the verified API contract.
 
+## Publishing to npm (maintainer)
+
+The package is publish-ready: `prepublishOnly` runs the build so `dist/` ships in the tarball,
+and the `files` allowlist includes only `dist/`, `bin/`, and `skills/` — source, tests, `.env`,
+`docs/`, and generated images are excluded (verify anytime with `npm pack --dry-run`).
+
+First publish:
+
+```bash
+# 1. (recommended) enable 2FA on your npm account, then:
+npm login
+# 2. confirm the name is free (a 404 means available):
+npm view mcp-image-openrouter
+# 3. publish (for a scoped name like @you/mcp-image-openrouter, add --access public):
+npm publish
+```
+
+Later updates:
+
+```bash
+npm version patch   # or minor / major — bumps package.json + git tag
+npm publish
+```
+
+Only you (and any maintainers you explicitly add) can publish new versions. Consider enabling
+**"require 2FA for publish"** in the package settings on npmjs.com for extra protection.
+
 ## License
 
 MIT License — inherits from the upstream [shinpr/mcp-image](https://github.com/shinpr/mcp-image)
-project. See `references/mcp-image/LICENSE`.
+project. See `LICENSE`.

@@ -40,6 +40,8 @@ export interface Config {
   skipPromptEnhancement: boolean
   /** Quality preset controlling image model selection. */
   imageQuality: ImageQuality
+  /** Attach a downscaled inline image preview to tool responses (default true). */
+  inlinePreview: boolean
 }
 
 /**
@@ -170,6 +172,8 @@ export function getConfig(): Result<Config, ConfigError> {
     apiTimeout: DEFAULT_CONFIG.apiTimeout,
     skipPromptEnhancement: readEnv('SKIP_PROMPT_ENHANCEMENT') === 'true',
     imageQuality: (readEnv('IMAGE_QUALITY') || 'fast') as ImageQuality,
+    // Default on; only an explicit "false" disables the inline preview.
+    inlinePreview: readEnv('IMAGE_INLINE_PREVIEW') !== 'false',
     ...(appUrl !== undefined ? { appUrl } : {}),
     ...(appTitle !== undefined ? { appTitle } : {}),
   }
