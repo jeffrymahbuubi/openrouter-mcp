@@ -1,0 +1,65 @@
+{
+  "name": "mcp-image-openrouter",
+  "version": "0.1.0",
+  "description": "OpenRouter-only MCP server for AI image generation and editing (two-stage: prompt enhancement + image generation)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-image-openrouter": "./dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "image-generation",
+    "image-editing",
+    "prompt-enhancement",
+    "openrouter",
+    "gemini",
+    "nano-banana",
+    "claude-code",
+    "claude-desktop",
+    "typescript"
+  ],
+  "license": "MIT",
+  "files": [
+    "dist/**/*",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "!dist/__tests__",
+    "bin",
+    "skills"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "format": "biome format --write src",
+    "format:check": "biome format src",
+    "lint": "biome lint src",
+    "lint:fix": "biome lint --write src",
+    "check": "biome check src",
+    "check:fix": "biome check --write src",
+    "check:deps": "dpdm --no-tree --no-warning --circular --exit-code circular:1 --exclude \"(node_modules|__tests__|\\.test\\.ts$|\\.spec\\.ts$)\" --tsconfig ./tsconfig.json \"src/**/*.ts\"",
+    "check:unused": "knip",
+    "check:all": "npm run check && npm run lint && npm run format:check && npm run check:deps && npm run check:unused && npm run build && npm run test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^16.4.7",
+    "openai": "^6.46.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.10",
+    "dpdm": "^4.2.0",
+    "knip": "^6.26.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
