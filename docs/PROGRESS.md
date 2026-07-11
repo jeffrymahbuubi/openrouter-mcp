@@ -13,6 +13,31 @@
 All phases 0–10 done. `check:all` green (186 mocked tests); live end-to-end verified
 (3/3 scenarios with the real OpenRouter key). The build is functional and documented.
 
+### Post-completion (2026-07-11)
+
+- **README example gallery:** added an "Example Use-Cases" section showing prompt → tool
+  call → result, using the three real live-test renders committed to `docs/examples/`
+  (`example-1-text-to-image.png`, `example-2-edit.png`, `example-3-quality.png`).
+- **Git repository:** initialized (`git init`, branch `main`) and pushed to GitHub —
+  **`jeffrymahbuubi/mcp-image-openrouter` (private)**,
+  <https://github.com/jeffrymahbuubi/mcp-image-openrouter>. Initial commit `cec0753`
+  (later doc updates follow). `.gitignore` excludes `node_modules/`, `dist/`, `.env`,
+  `output/`, `references/` (had its own nested `.git`), and ruflo artifacts.
+
+### Known follow-ups / ideas (not blocking)
+
+- **Distribution UX:** clients currently launch `node /abs/path/dist/index.js`. Cleaner
+  options: (a) `npm publish` then `npx -y mcp-image-openrouter` (needs a `prepublishOnly`
+  build + npm account; repo is private so `npx github:` won't work and `dist/` is
+  gitignored); (b) global install `npm i -g .` / `npm link` → bare `mcp-image-openrouter`
+  command. Not yet implemented.
+- **Inline image preview:** the tool returns the saved **file path** as a text/resource
+  descriptor (upstream design, to avoid the ~25k-token MCP limit — our PNGs are ~1.5MB).
+  So Claude Desktop shows the path, not an inline image. A future enhancement could return
+  a downscaled base64 preview (MCP `image` content) alongside the on-disk full file.
+- Optional: npm publish, CI workflow (`check:all` on push), genericize residual
+  `GeminiAPIError` naming, widen the image-model capability map.
+
 ## ⏰ Standing reminders
 
 - [x] **Real key added to `.env`** (2026-07-11) and live test passed. `.env` is
