@@ -38,6 +38,12 @@ All phases 0–10 done. `check:all` green (186 mocked tests); live end-to-end ve
 - npm publish-ready: `prepublishOnly: npm run build`, `repository`/`homepage`/`bugs`
   metadata; `npm pack --dry-run` confirms only `dist`/`bin`/`skills`/`README`/`LICENSE`
   ship (no `src`/tests/`.env`/`docs`/`output`). README has npx + publishing sections.
+- **Claude Desktop render — RESOLVED (2026-07-12):** user first saw no inline image. Verified
+  (in-process + MCP-stdio wire test) that 0.1.0 returns a valid `image` block (~6.5KB JPEG).
+  Researched via parallel-search: Claude Desktop **expects base64 `image` content** (we do that),
+  has a **~1MB tool-image limit** (why we send a small preview, not the full file), and **collapses
+  MCP tool images behind a ▶ expander by default**. User confirmed: expanding the tool-call block
+  shows the image. No code change; README "Viewing the result" gained a Claude Desktop tip.
 
 ### Known follow-ups / ideas (not blocking)
 

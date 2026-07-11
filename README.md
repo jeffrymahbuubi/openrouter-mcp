@@ -308,6 +308,16 @@ So in Claude Desktop you'll typically **see the image inline** *and* get the sav
 the full-resolution version. In clients that don't render inline images, open the saved file from
 `IMAGE_OUTPUT_DIR`. To turn previews off (path-only responses), set `IMAGE_INLINE_PREVIEW=false`.
 
+> **💡 Claude Desktop tip — the preview lives inside the tool-call block.** Claude Desktop renders
+> MCP tool images **inside the `generate_image` tool-call panel**, which is often **collapsed
+> behind a ▶ expander by default** — click it to reveal the image. This is a known Claude Desktop
+> UI behavior ([claude-code #53256](https://github.com/anthropics/claude-code/issues/53256),
+> [claude-ai-mcp #238](https://github.com/anthropics/claude-ai-mcp/issues/238)), not a
+> configuration issue. Two related facts: (1) Claude Desktop has a **~1 MB limit** on tool image
+> content and silently drops anything larger — which is exactly why this server sends a small
+> downscaled preview rather than the full-resolution file; and (2) updating to the latest Claude
+> Desktop generally improves inline rendering.
+
 ## `generate_image` Tool — Parameters
 
 | Parameter | Type | Required | Description |
