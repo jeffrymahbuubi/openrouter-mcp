@@ -246,3 +246,52 @@ only the backend interpretation changes.
    let us skip folding for those).
 6. Whether a grounded/search-capable image path exists (for `useGoogleSearch`).
 7. Recommended headers (`HTTP-Referer`, `X-Title`) and any rate/spend headers worth surfacing.
+
+> ✅ **All resolved (2026-07-11)** via context7 + live API — see `docs/OPENROUTER_API.md`
+> (verified contract) and `docs/PROGRESS.md` (Phase 2). Surface A (dedicated Images API) is used.
+
+## 12. Future work / roadmap
+
+Project status: **shipped** — published as `mcp-image-openrouter` on npm (v0.1.0), live-tested,
+`check:all` green. The items below are not blocking; they are planned improvements.
+
+### 12.1 CI: continuous integration + release workflow (planned)
+
+Add GitHub Actions under `.github/workflows/`:
+
+- **`ci.yml`** — on `push` and `pull_request` to `main`: checkout → setup Node 22 → `npm ci` →
+  `npm run check:all` (biome + lint + format + dpdm + knip + tsc build + vitest). Gates every
+  change against the same suite we run locally (currently 193 tests).
+- **`release.yml`** — on a pushed tag `v*` (or a published GitHub Release): `npm ci` → `npm run build`
+  → `npm publish`. Authenticate with an **npm automation access token** stored as the repo secret
+  `NPM_TOKEN` (set `NODE_AUTH_TOKEN` + `registry-url` via `actions/setup-node`). Automation tokens
+  bypass the interactive 2FA/OTP prompt that blocks non-interactive `npm publish` (we hit `EOTP`
+  locally). Optionally add `--provenance` (needs `id-token: write` permissions) for supply-chain
+  attestation. Keep the manual `npm version <patch|minor|major>` → tag push as the release trigger.
+- Model `ci.yml` on the reference repo's existing workflow (`references/mcp-image/.github/workflows/ci.yml`).
+- Acceptance: green CI badge on push; a tag publishes a new npm version with no local OTP step.
+
+### 12.2 Cosmetic: rename `GeminiAPIError` → provider-neutral (planned)
+
+`src/utils/errors.ts` still exports `GeminiAPIError` (code `GEMINI_API_ERROR`) and the vestigial
+`GEMINI_MODELS` constant — leftovers from the upstream Gemini provider, kept during the rewrite to
+avoid churn. Rename for clarity now that this is OpenRouter-only:
+
+- Rename class `GeminiAPIError` → e.g. `ProviderAPIError` (or `OpenRouterAPIError`). Decide whether
+  to keep the wire **code** stable (`GEMINI_API_ERROR` → `PROVIDER_API_ERROR`) — changing it is a
+  minor breaking change for anyone parsing `error.code`, so note it in a version bump.
+- Update all references: the `Result` error unions in `api/textClient.ts` + `api/imageClient.ts`
+  (currently `GeminiAPIError | ImageAPIError | NetworkError` — note the OpenRouter clients only ever
+  return `ImageAPIError | NetworkError`, so `GeminiAPIError` can likely be dropped from the unions
+  entirely), `responseBuilder.convertErrorToStructured`, `server/errorHandler.ts`.
+- Remove or repurpose `GEMINI_MODELS` (only referenced by the error's suggestion text) and update the
+  now-Gemini-specific suggestion strings + the redaction pattern comments in `logger.ts`.
+- Update tests: `utils/__tests__/errors.test.ts`, `server/__tests__/errorHandler.test.ts`.
+- Do it test-first (per TDD preference); `check:all` must stay green.
+
+### 12.3 Other minor ideas (optional)
+
+- Widen `MODEL_CAPABILITIES` (in `openrouterImageClient.ts`) as OpenRouter adds image models, or
+  discover capabilities at runtime via `GET /images/models/{id}/endpoints`.
+- Downscale the ~5 MB `docs/examples/` PNGs (no optimizer was available at authoring time).
+- Enable "require 2FA for publish" on the npm package settings.

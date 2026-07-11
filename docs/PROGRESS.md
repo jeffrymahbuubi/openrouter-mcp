@@ -4,7 +4,7 @@
 > and `docs/OPENROUTER_API.md` (verified API reference). Update it every session.
 > Restore order after `/clear`: `SPEC.md` → `OPENROUTER_API.md` → this file.
 
-**Last updated:** 2026-07-11
+**Last updated:** 2026-07-12
 
 ---
 
@@ -43,11 +43,15 @@ All phases 0–10 done. `check:all` green (186 mocked tests); live end-to-end ve
 
 - **Inline image preview:** ✅ DONE (2026-07-12, see above) — Claude Desktop now renders the
   image inline via a downscaled preview; full-res still on disk.
-- **Distribution / npx:** package is publish-ready (see above). Remaining is the user action
-  `npm login` + `npm publish` (user opted to publish public). After that, clients can use
-  `npx -y mcp-image-openrouter`. Local `node /abs/path/dist/index.js` still works too.
-- Optional: CI workflow (`check:all` on push), genericize residual `GeminiAPIError` naming,
-  widen the image-model capability map, downscale the ~5MB `docs/examples/` PNGs.
+- **Distribution / npx:** ✅ PUBLISHED to npm (2026-07-12) — `mcp-image-openrouter@0.1.0`
+  (public, latest tag), <https://www.npmjs.com/package/mcp-image-openrouter>. Verified
+  end-to-end: `npx -y mcp-image-openrouter@0.1.0` fetches from the registry, boots the MCP
+  server, and answers `initialize` + `tools/list` (generate_image). Clients can now use
+  `npx -y mcp-image-openrouter`; local `node dist/index.js` still works too. Future releases:
+  `npm version patch|minor` → `npm publish` (needs 2FA OTP: `npm publish --otp=<code>`).
+- Optional (now detailed in **SPEC §12 Future work**): CI + release workflow (`.github/workflows/`),
+  genericize residual `GeminiAPIError` naming, widen the image-model capability map, downscale the
+  ~5MB `docs/examples/` PNGs, enable "require 2FA for publish" on npm.
 
 ## ⏰ Standing reminders
 
