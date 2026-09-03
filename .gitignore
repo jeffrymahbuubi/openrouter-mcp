@@ -1,0 +1,6 @@
+# Root-level ignores only — each server package has its own .gitignore
+# for its build/output/env artifacts (node_modules/, dist/, .env, etc.).
+.DS_Store
+Thumbs.db
+*.log
+.idea/
