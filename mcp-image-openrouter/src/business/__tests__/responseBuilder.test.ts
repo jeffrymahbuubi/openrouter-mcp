@@ -1,0 +1,264 @@
+/**
+ * Test suite for ResponseBuilder
+ * Tests structured content response generation for both success and error cases
+ */
+
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { GeneratedImageResult } from '../../api/imageClient'
+import {
+  FileOperationError,
+  GeminiAPIError,
+  InputValidationError,
+  NetworkError,
+} from '../../utils/errors'
+import { createResponseBuilder, type ResponseBuilder } from '../responseBuilder'
+
+describe('ResponseBuilder', () => {
+  let responseBuilder: ResponseBuilder
+
+  beforeEach(() => {
+    responseBuilder = createResponseBuilder()
+  })
+
+  describe('buildSuccessResponse', () => {
+    it('should create file URI structured content response when filePath is provided', () => {
+      const testImageData = Buffer.from('fake-image-data')
+      const generationResult: GeneratedImageResult = {
+        imageData: testImageData,
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: 'image/png',
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+      const testFilePath = '/path/to/generated-image.png'
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, testFilePath)
+
+      expect(response.isError).toBe(false)
+      expect(response.content).toHaveLength(1)
+      expect(response.content[0].type).toBe('text')
+
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.type).toBe('resource')
+      expect(contentData.resource.uri).toBe('file:///path/to/generated-image.png')
+      expect(contentData.resource.name).toBe('generated-image.png')
+      expect(contentData.resource.mimeType).toBe('image/png')
+      expect(contentData.metadata).toEqual({
+        model: generationResult.metadata.model,
+        processingTime: 0,
+        contextMethod: 'structured_prompt',
+        timestamp: generationResult.metadata.timestamp.toISOString(),
+      })
+    })
+
+    it('should use metadata MIME type image/jpeg when available', () => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('fake-image-data'),
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: 'image/jpeg',
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.jpg')
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.resource.mimeType).toBe('image/jpeg')
+    })
+
+    it('should use metadata MIME type image/webp when available', () => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('fake-image-data'),
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: 'image/webp',
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.webp')
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.resource.mimeType).toBe('image/webp')
+    })
+
+    it('should use metadata MIME type image/png when available', () => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('fake-image-data'),
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: 'image/png',
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.png')
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.resource.mimeType).toBe('image/png')
+    })
+
+    it('should fall back to extension-based detection when metadata MIME is undefined', () => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('fake-image-data'),
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: undefined as unknown as string,
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.webp')
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.resource.mimeType).toBe('image/webp')
+    })
+
+    it('should fall back to extension-based detection when metadata MIME is empty string', () => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('fake-image-data'),
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: '',
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.jpg')
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.resource.mimeType).toBe('image/jpeg')
+    })
+
+    it('should fall back to default MIME type for unsupported metadata MIME type', () => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('fake-image-data'),
+        metadata: {
+          model: 'gemini-3.1-flash-image-preview',
+          prompt: 'test prompt',
+          mimeType: 'image/tiff',
+          timestamp: new Date('2025-08-28T12:00:00Z'),
+          inputImageProvided: false,
+        },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.tiff')
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.resource.mimeType).toBe('image/png')
+    })
+  })
+
+  describe('buildErrorResponse', () => {
+    it('should create error response for InputValidationError', () => {
+      const error = new InputValidationError(
+        'Invalid prompt provided',
+        'Please provide a non-empty prompt'
+      )
+
+      const response = responseBuilder.buildErrorResponse(error)
+
+      expect(response.isError).toBe(true)
+      expect(response.content).toHaveLength(1)
+      expect(response.content[0].type).toBe('text')
+
+      const errorData = JSON.parse(response.content[0].text)
+      expect(errorData.error.code).toBe('INPUT_VALIDATION_ERROR')
+      expect(errorData.error.message).toBe('Invalid prompt provided')
+      expect(errorData.error.suggestion).toBe('Please provide a non-empty prompt')
+    })
+
+    it('should create error response for FileOperationError', () => {
+      const error = new FileOperationError('Failed to save image file')
+
+      const response = responseBuilder.buildErrorResponse(error)
+
+      expect(response.isError).toBe(true)
+      const errorData = JSON.parse(response.content[0].text)
+      expect(errorData.error.code).toBe('FILE_OPERATION_ERROR')
+      expect(errorData.error.message).toBe('Failed to save image file')
+      expect(errorData.error.suggestion).toBe(
+        'Check file system permissions and available disk space'
+      )
+    })
+
+    it('should create error response for GeminiAPIError', () => {
+      const error = new GeminiAPIError(
+        'API quota exceeded',
+        'Please try again later or upgrade your API quota'
+      )
+
+      const response = responseBuilder.buildErrorResponse(error)
+
+      expect(response.isError).toBe(true)
+      const errorData = JSON.parse(response.content[0].text)
+      expect(errorData.error.code).toBe('GEMINI_API_ERROR')
+      expect(errorData.error.message).toBe('API quota exceeded')
+      expect(errorData.error.suggestion).toBe('Please try again later or upgrade your API quota')
+    })
+
+    it('should expose allowlisted context fields in details for GeminiAPIError', () => {
+      const error = new GeminiAPIError('Failed to generate image with Gemini', {
+        provider: 'gemini',
+        prompt: 'a photograph of a cat',
+        upstreamMessage: 'content policy violation: NSFW request',
+        suggestion: 'Rephrase the prompt',
+      })
+
+      const response = responseBuilder.buildErrorResponse(error)
+      const errorData = JSON.parse(response.content[0].text)
+
+      expect(errorData.error.details).toBeDefined()
+      expect(errorData.error.details.provider).toBe('gemini')
+      expect(errorData.error.details.upstreamMessage).toContain('content policy violation')
+      expect(errorData.error.details.prompt).toBeUndefined()
+    })
+
+    it('should redact API keys from upstreamMessage in details', () => {
+      const error = new GeminiAPIError('Failed to generate image with Gemini', {
+        provider: 'gemini',
+        upstreamMessage: 'Auth failed for OPENAI_API_KEY=sk-proj-ABCDEF123456789',
+      })
+
+      const response = responseBuilder.buildErrorResponse(error)
+      const errorData = JSON.parse(response.content[0].text)
+
+      expect(errorData.error.details.upstreamMessage).toContain('[REDACTED]')
+      expect(errorData.error.details.upstreamMessage).not.toContain('sk-proj-ABCDEF123456789')
+    })
+
+    it('should create error response for NetworkError', () => {
+      const error = new NetworkError(
+        'Network connection failed',
+        'Please check your internet connection and try again'
+      )
+
+      const response = responseBuilder.buildErrorResponse(error)
+
+      expect(response.isError).toBe(true)
+      const errorData = JSON.parse(response.content[0].text)
+      expect(errorData.error.code).toBe('NETWORK_ERROR')
+      expect(errorData.error.message).toBe('Network connection failed')
+      expect(errorData.error.suggestion).toBe('Please check your internet connection and try again')
+    })
+
+    it('should handle unknown errors gracefully', () => {
+      const error = new Error('Unknown error') as any
+
+      const response = responseBuilder.buildErrorResponse(error)
+
+      expect(response.isError).toBe(true)
+      const errorData = JSON.parse(response.content[0].text)
+      expect(errorData.error.code).toBe('UNKNOWN_ERROR')
+      expect(errorData.error.message).toContain('Unknown error')
+    })
+  })
+})
