@@ -1,0 +1,31 @@
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/**/*.{test,spec}.ts'],
+    exclude: ['node_modules/**', 'dist/**'],
+    // Process management improvements
+    testTimeout: 10000, // 10 second timeout
+    hookTimeout: 10000, // Hook processing timeout 10 seconds
+    teardownTimeout: 5000, // Teardown timeout 5 seconds
+    isolate: true, // Isolate between tests (prevent flaky parallel tests)
+    coverage: {
+      enabled: false, // Disable coverage by default
+      provider: 'v8',
+      reporter: ['text', 'json', 'html', 'lcov'],
+      reportsDirectory: './coverage',
+      clean: true, // Clear coverage files to prevent process residue
+      include: ['src/**/*.{js,ts,jsx,tsx}'],
+      exclude: [
+        'node_modules/**',
+        'dist/**',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/mockData/**',
+        '**/__mocks__/**',
+      ],
+    },
+  },
+})

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/server-main.ts", "bin/install-skills.js"],
+  "project": ["src/**/*.ts", "bin/**/*.js"],
+  "ignoreExportsUsedInFile": true
+}

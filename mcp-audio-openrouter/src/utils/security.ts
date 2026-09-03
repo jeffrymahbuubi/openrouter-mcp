@@ -1,0 +1,95 @@
+/**
+ * Security Manager for file path validation and sanitization
+ * Provides protection against path traversal, null byte injection, and other security threats
+ */
+
+import * as path from 'node:path'
+import { Err, Ok, type Result } from '../types/result.js'
+import { SecurityError } from './errors.js'
+import { SUPPORTED_EXTENSIONS } from './mimeUtils.js'
+
+/**
+ * Security manager for handling file path validation and sanitization
+ */
+export class SecurityManager {
+  private readonly allowedBasePaths = [
+    process.cwd(),
+    path.resolve(process.env['AUDIO_OUTPUT_DIR'] || './output'),
+    path.resolve('./temp'),
+    path.resolve('./tmp'),
+    '/tmp',
+  ]
+
+  /**
+   * Sanitize and validate file path for security
+   * @param inputPath File path to sanitize
+   * @returns Result containing sanitized path or security error
+   */
+  sanitizeFilePath(inputPath: string): Result<string, SecurityError> {
+    // Null byte attack prevention
+    if (inputPath.includes('\0')) {
+      return Err(new SecurityError('Null byte detected in file path'))
+    }
+
+    // Path traversal attack prevention
+    if (inputPath.includes('..')) {
+      return Err(new SecurityError('Path traversal attempt detected'))
+    }
+
+    // Resolve and validate absolute path
+    const resolvedPath = path.resolve(inputPath)
+    const isAllowed = this.allowedBasePaths.some((basePath) =>
+      resolvedPath.startsWith(path.resolve(basePath))
+    )
+
+    if (!isAllowed) {
+      return Err(new SecurityError('File path outside allowed directories'))
+    }
+
+    return Ok(resolvedPath)
+  }
+
+  /**
+   * Validate audio file extension
+   * @param filePath File path to validate
+   * @returns Result indicating validation success or security error
+   */
+  validateAudioFile(filePath: string): Result<void, SecurityError> {
+    const extension = path.extname(filePath).toLowerCase()
+
+    if (!SUPPORTED_EXTENSIONS.includes(extension)) {
+      return Err(new SecurityError(`Unsupported file extension: ${extension}`))
+    }
+
+    return Ok(undefined)
+  }
+
+  /**
+   * Sanitize filename by removing dangerous characters
+   * @param filename Filename to sanitize
+   * @returns Sanitized filename
+   */
+  sanitizeFilename(filename: string): string {
+    // Remove null bytes and path separators
+    let sanitized = filename.replace(/[\0/\\]/g, '')
+
+    // Remove control characters (ASCII 0-31 and 127) by filtering each character
+    sanitized = sanitized
+      .split('')
+      .filter((char) => {
+        const code = char.charCodeAt(0)
+        return code > 31 && code !== 127
+      })
+      .join('')
+
+    // Trim whitespace and dots (to prevent hidden files and relative paths)
+    sanitized = sanitized.replace(/^\.+|\.+$/g, '').trim()
+
+    // Ensure filename is not empty after sanitization
+    if (sanitized.length === 0) {
+      sanitized = `secure-file-${Date.now()}`
+    }
+
+    return sanitized
+  }
+}
