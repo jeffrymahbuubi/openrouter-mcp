@@ -212,6 +212,25 @@ export class NetworkError extends BaseError {
 }
 
 /**
+ * Error for requests aborted because they exceeded the configured timeout.
+ * Distinct from NetworkError so callers can branch on `TIMEOUT_ERROR`.
+ */
+export class TimeoutError extends BaseError {
+  readonly code = 'TIMEOUT_ERROR'
+
+  constructor(
+    message: string,
+    public readonly timeoutMs: number
+  ) {
+    super(message, { timeoutMs })
+  }
+
+  get suggestion(): string {
+    return `The request exceeded the ${this.timeoutMs} ms audio timeout; retry, or shorten the prompt or music length`
+  }
+}
+
+/**
  * Error for configuration failures
  */
 export class ConfigError extends BaseError {

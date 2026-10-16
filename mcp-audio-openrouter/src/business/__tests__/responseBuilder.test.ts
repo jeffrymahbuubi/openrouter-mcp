@@ -10,6 +10,7 @@ import {
   FileOperationError,
   InputValidationError,
   NetworkError,
+  TimeoutError,
 } from '../../utils/errors'
 import { createResponseBuilder, type ResponseBuilder } from '../responseBuilder'
 
@@ -140,6 +141,17 @@ describe('ResponseBuilder', () => {
   })
 
   describe('buildErrorResponse', () => {
+    it('should create error response for TimeoutError with details.timeoutMs', () => {
+      const response = responseBuilder.buildErrorResponse(
+        new TimeoutError('Audio request timed out', 120000)
+      )
+
+      expect(response.isError).toBe(true)
+      const errorData = JSON.parse(response.content[0]?.text ?? '{}')
+      expect(errorData.error.code).toBe('TIMEOUT_ERROR')
+      expect(errorData.error.details.timeoutMs).toBe(120000)
+    })
+
     it('should create error response for InputValidationError', () => {
       const error = new InputValidationError('Invalid prompt provided', 'Please provide a prompt')
 

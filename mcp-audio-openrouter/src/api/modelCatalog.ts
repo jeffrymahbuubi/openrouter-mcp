@@ -13,7 +13,7 @@
 import type { Result } from '../types/result.js'
 import { Err, Ok } from '../types/result.js'
 import type { Config } from '../utils/config.js'
-import { AudioAPIError, type NetworkError } from '../utils/errors.js'
+import { AudioAPIError, type NetworkError, type TimeoutError } from '../utils/errors.js'
 import { Logger } from '../utils/logger.js'
 import { buildHttpError, classifyThrownError } from './errorClassification.js'
 
@@ -25,7 +25,9 @@ export interface VoiceModelInfo {
 }
 
 export interface ModelCatalog {
-  describeVoiceModel(model: string): Promise<Result<VoiceModelInfo, AudioAPIError | NetworkError>>
+  describeVoiceModel(
+    model: string
+  ): Promise<Result<VoiceModelInfo, AudioAPIError | NetworkError | TimeoutError>>
 }
 
 interface CatalogEntry {
@@ -80,7 +82,7 @@ class ModelCatalogImpl implements ModelCatalog {
 
   async describeVoiceModel(
     model: string
-  ): Promise<Result<VoiceModelInfo, AudioAPIError | NetworkError>> {
+  ): Promise<Result<VoiceModelInfo, AudioAPIError | NetworkError | TimeoutError>> {
     if (!this.cache) {
       const loaded = await this.loadCatalog()
       if (!loaded.success) {
@@ -92,7 +94,7 @@ class ModelCatalogImpl implements ModelCatalog {
   }
 
   private async loadCatalog(): Promise<
-    Result<Map<string, VoiceModelInfo>, AudioAPIError | NetworkError>
+    Result<Map<string, VoiceModelInfo>, AudioAPIError | NetworkError | TimeoutError>
   > {
     this.logger.info('modelCatalog', 'Fetching OpenRouter speech model catalog (once per process)')
 
@@ -108,7 +110,7 @@ class ModelCatalogImpl implements ModelCatalog {
         signal: AbortSignal.timeout(this.config.apiTimeout),
       })
     } catch (error) {
-      return Err(classifyThrownError(error))
+      return Err(classifyThrownError(error, this.config.apiTimeout))
     }
 
     if (!response.ok) {
@@ -125,7 +127,7 @@ class ModelCatalogImpl implements ModelCatalog {
     try {
       text = await response.text()
     } catch (error) {
-      return Err(classifyThrownError(error))
+      return Err(classifyThrownError(error, this.config.apiTimeout))
     }
 
     const models = parseCatalog(text)

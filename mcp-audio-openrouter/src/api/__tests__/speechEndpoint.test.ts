@@ -290,10 +290,43 @@ describe('requestSpeech — error mapping', () => {
     expect(error.suggestion.toLowerCase()).toContain('unavailable')
   })
 
-  it('maps a TimeoutError from fetch to NETWORK_ERROR', async () => {
+  it('maps a TimeoutError from fetch to TIMEOUT_ERROR naming the 120000 ms limit', async () => {
     const timeout = new Error('The operation was aborted due to timeout')
     timeout.name = 'TimeoutError'
     mockFetch.mockRejectedValue(timeout)
+
+    const result = await requestSpeech(makeConfig(), MODEL, {
+      prompt: 'hi',
+      voice: 'george',
+      format: 'mp3',
+    })
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe('TIMEOUT_ERROR')
+      expect(result.error.suggestion).toContain('120000')
+    }
+  })
+
+  it('maps an AbortError from fetch to TIMEOUT_ERROR', async () => {
+    const abort = new Error('This operation was aborted')
+    abort.name = 'AbortError'
+    mockFetch.mockRejectedValue(abort)
+
+    const result = await requestSpeech(makeConfig(), MODEL, {
+      prompt: 'hi',
+      voice: 'george',
+      format: 'mp3',
+    })
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe('TIMEOUT_ERROR')
+    }
+  })
+
+  it('keeps ECONNREFUSED as NETWORK_ERROR', async () => {
+    mockFetch.mockRejectedValue(new Error('connect ECONNREFUSED 1.2.3.4:443'))
 
     const result = await requestSpeech(makeConfig(), MODEL, {
       prompt: 'hi',

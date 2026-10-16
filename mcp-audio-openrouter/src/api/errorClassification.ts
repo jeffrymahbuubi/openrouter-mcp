@@ -4,7 +4,7 @@
  * catalog so every OpenRouter call maps failures the same way.
  */
 
-import { AudioAPIError, NetworkError } from '../utils/errors.js'
+import { AudioAPIError, NetworkError, TimeoutError } from '../utils/errors.js'
 
 interface ErrorWithCode extends Error {
   code?: string
@@ -23,19 +23,21 @@ function isNetworkError(error: unknown): boolean {
 
 /**
  * Classifies an error thrown by `fetch` or a body read. `fetch` throws
- * TypeError on transport failure and TimeoutError/AbortError on an aborted
- * request: all network-class failures.
+ * TimeoutError/AbortError when `AbortSignal.timeout(timeoutMs)` fires, and
+ * TypeError on transport failure (a network-class failure).
  */
-export function classifyThrownError(error: unknown): AudioAPIError | NetworkError {
+export function classifyThrownError(
+  error: unknown,
+  timeoutMs: number
+): AudioAPIError | NetworkError | TimeoutError {
   const errorMessage = error instanceof Error ? error.message : 'Unknown error'
   const name = error instanceof Error ? error.name : ''
 
-  if (
-    isNetworkError(error) ||
-    error instanceof TypeError ||
-    name === 'TimeoutError' ||
-    name === 'AbortError'
-  ) {
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return new TimeoutError(`OpenRouter audio generation exceeded ${timeoutMs} ms`, timeoutMs)
+  }
+
+  if (isNetworkError(error) || error instanceof TypeError) {
     return new NetworkError(
       'Network error during OpenRouter audio generation',
       'Check your internet connection and try again',

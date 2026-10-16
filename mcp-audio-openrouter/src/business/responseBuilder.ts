@@ -18,6 +18,7 @@ import {
   InputValidationError,
   NetworkError,
   SecurityError,
+  TimeoutError,
 } from '../utils/errors.js'
 import { sanitizeText } from '../utils/logger.js'
 import { getMimeTypeFromExtension, SUPPORTED_MIME_TYPES } from '../utils/mimeUtils.js'
@@ -30,7 +31,7 @@ const DEFAULT_ERROR_SUGGESTION = 'Please try again or contact support if the pro
  * list (notably `prompt`, which the caller already supplied, and any future
  * additions) stays out of the wire format.
  */
-const SAFE_CONTEXT_KEYS = ['provider', 'stage', 'statusCode'] as const
+const SAFE_CONTEXT_KEYS = ['provider', 'stage', 'statusCode', 'timeoutMs'] as const
 
 /**
  * Project an error's context object into a sanitized subset suitable for
@@ -101,6 +102,7 @@ function convertErrorToStructured(error: BaseError | Error): {
     error instanceof FileOperationError ||
     error instanceof AudioAPIError ||
     error instanceof NetworkError ||
+    error instanceof TimeoutError ||
     error instanceof ConfigError ||
     error instanceof SecurityError
   ) {

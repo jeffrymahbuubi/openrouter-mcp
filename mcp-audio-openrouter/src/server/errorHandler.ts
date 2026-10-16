@@ -11,10 +11,11 @@ import {
   InputValidationError,
   NetworkError,
   type Result,
+  TimeoutError,
 } from '../utils/errors.js'
 import { Logger, sanitizeText } from '../utils/logger.js'
 
-const SAFE_CONTEXT_KEYS = ['provider', 'stage', 'statusCode'] as const
+const SAFE_CONTEXT_KEYS = ['provider', 'stage', 'statusCode', 'timeoutMs'] as const
 
 function buildPublicDetails(
   context: Record<string, unknown> | undefined
@@ -112,9 +113,13 @@ function convertErrorToStructured(error: Error): {
     error instanceof FileOperationError ||
     error instanceof AudioAPIError ||
     error instanceof NetworkError ||
+    error instanceof TimeoutError ||
     error instanceof ConfigError
   ) {
-    const details = error instanceof AudioAPIError ? buildPublicDetails(error.context) : undefined
+    const details =
+      error instanceof AudioAPIError || error instanceof TimeoutError
+        ? buildPublicDetails(error.context)
+        : undefined
 
     return {
       ...baseError,

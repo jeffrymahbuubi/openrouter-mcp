@@ -14,7 +14,7 @@ import type { Result } from '../types/result.js'
 import { Err, Ok } from '../types/result.js'
 import { sniffAudioFormat } from '../utils/audioFormatSniffer.js'
 import type { Config } from '../utils/config.js'
-import { AudioAPIError, type NetworkError } from '../utils/errors.js'
+import { AudioAPIError, type NetworkError, type TimeoutError } from '../utils/errors.js'
 import { Logger } from '../utils/logger.js'
 import { mimeTypeForFormat } from '../utils/mimeUtils.js'
 import { pcm16ToWav } from '../utils/pcmToWav.js'
@@ -91,7 +91,7 @@ export async function requestSpeech(
   config: Config,
   model: string,
   params: SpeechParams
-): Promise<Result<SpeechResult, AudioAPIError | NetworkError>> {
+): Promise<Result<SpeechResult, AudioAPIError | NetworkError | TimeoutError>> {
   const body: SpeechRequest = {
     model,
     input: params.prompt,
@@ -113,7 +113,7 @@ export async function requestSpeech(
       signal: AbortSignal.timeout(config.apiTimeout),
     })
   } catch (error) {
-    return Err(classifyThrownError(error))
+    return Err(classifyThrownError(error, config.apiTimeout))
   }
 
   if (!response.ok) {
@@ -124,7 +124,7 @@ export async function requestSpeech(
   try {
     bytes = Buffer.from(await response.arrayBuffer())
   } catch (error) {
-    return Err(classifyThrownError(error))
+    return Err(classifyThrownError(error, config.apiTimeout))
   }
 
   const contentType = (response.headers.get('content-type') ?? '').toLowerCase()

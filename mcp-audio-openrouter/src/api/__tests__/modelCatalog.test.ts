@@ -88,6 +88,22 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('modelCatalog.describeVoiceModel timeout', () => {
+  it('reports a catalog fetch abort as TIMEOUT_ERROR', async () => {
+    const abort = new Error('The operation was aborted due to timeout')
+    abort.name = 'TimeoutError'
+    mockFetch.mockRejectedValue(abort)
+    const catalog = createModelCatalog(makeConfig())
+
+    const result = await catalog.describeVoiceModel('elevenlabs/eleven-v3')
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe('TIMEOUT_ERROR')
+    }
+  })
+})
+
 describe('modelCatalog.describeVoiceModel', () => {
   it('reports an ElevenLabs model as speech-only with its 21 voices', async () => {
     mockFetch.mockResolvedValue(jsonOk(CATALOG_PAYLOAD))

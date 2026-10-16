@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { AudioAPIError } from '../errors'
+import { AudioAPIError, TimeoutError } from '../errors'
 
 describe('AudioAPIError', () => {
   describe('suggestion getter', () => {
@@ -46,5 +46,16 @@ describe('AudioAPIError', () => {
 
       expect((error as unknown as { statusCode?: number }).statusCode).toBe(401)
     })
+  })
+})
+
+describe('TimeoutError', () => {
+  it('carries TIMEOUT_ERROR, timeoutMs context and a retry/shorten suggestion', () => {
+    const error = new TimeoutError('Audio request timed out', 120000)
+
+    expect(error.code).toBe('TIMEOUT_ERROR')
+    expect(error.context?.['timeoutMs']).toBe(120000)
+    expect(error.suggestion).toContain('120000')
+    expect(error.suggestion.toLowerCase()).toContain('shorten')
   })
 })

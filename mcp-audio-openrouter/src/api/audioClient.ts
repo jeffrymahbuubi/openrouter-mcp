@@ -1,6 +1,11 @@
 import type { AudioFormat, MusicLength, Voice } from '../types/mcp.js'
 import type { Result } from '../types/result.js'
-import type { AudioAPIError, InputValidationError, NetworkError } from '../utils/errors.js'
+import type {
+  AudioAPIError,
+  InputValidationError,
+  NetworkError,
+  TimeoutError,
+} from '../utils/errors.js'
 
 /**
  * Provider-neutral metadata for generated audio.
@@ -75,8 +80,10 @@ export interface GeneratedMusicResult {
 export interface AudioClient {
   generateVoice(
     params: VoiceApiParams
-  ): Promise<Result<GeneratedVoiceResult, AudioAPIError | NetworkError | InputValidationError>>
+  ): Promise<
+    Result<GeneratedVoiceResult, AudioAPIError | NetworkError | TimeoutError | InputValidationError>
+  >
   generateMusic(
     params: MusicApiParams
-  ): Promise<Result<GeneratedMusicResult, AudioAPIError | NetworkError>>
+  ): Promise<Result<GeneratedMusicResult, AudioAPIError | NetworkError | TimeoutError>>
 }

@@ -23,7 +23,12 @@ import { Err, Ok } from '../types/result.js'
 import { sniffAudioFormat } from '../utils/audioFormatSniffer.js'
 import type { Config } from '../utils/config.js'
 import { selectMusicModel } from '../utils/config.js'
-import { AudioAPIError, InputValidationError, type NetworkError } from '../utils/errors.js'
+import {
+  AudioAPIError,
+  InputValidationError,
+  type NetworkError,
+  type TimeoutError,
+} from '../utils/errors.js'
 import { Logger } from '../utils/logger.js'
 import { mimeTypeForFormat } from '../utils/mimeUtils.js'
 import { pcm16ToWav } from '../utils/pcmToWav.js'
@@ -70,7 +75,7 @@ interface StreamedAudio {
   transcript: string
 }
 
-type VoiceError = AudioAPIError | NetworkError | InputValidationError
+type VoiceError = AudioAPIError | NetworkError | TimeoutError | InputValidationError
 
 class OpenRouterAudioClientImpl implements AudioClient {
   private readonly logger = new Logger()
@@ -184,7 +189,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
 
   async generateMusic(
     params: MusicApiParams
-  ): Promise<Result<GeneratedMusicResult, AudioAPIError | NetworkError>> {
+  ): Promise<Result<GeneratedMusicResult, AudioAPIError | NetworkError | TimeoutError>> {
     const model = selectMusicModel(this.config, params.length)
     const request: ChatCompletionsAudioRequest = {
       model,
@@ -247,7 +252,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
   private async streamAudioCompletion(
     model: string,
     body: ChatCompletionsAudioRequest
-  ): Promise<Result<StreamedAudio, AudioAPIError | NetworkError>> {
+  ): Promise<Result<StreamedAudio, AudioAPIError | NetworkError | TimeoutError>> {
     let response: Response
     try {
       response = await fetch(`${this.config.baseUrl}/chat/completions`, {
@@ -262,7 +267,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
         signal: AbortSignal.timeout(this.config.apiTimeout),
       })
     } catch (error) {
-      return Err(classifyThrownError(error))
+      return Err(classifyThrownError(error, this.config.apiTimeout))
     }
 
     if (!response.ok) {
@@ -286,7 +291,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
   private async consumeSseStream(
     body: ReadableStream<Uint8Array>,
     model: string
-  ): Promise<Result<StreamedAudio, AudioAPIError | NetworkError>> {
+  ): Promise<Result<StreamedAudio, AudioAPIError | NetworkError | TimeoutError>> {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -321,7 +326,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
         }
       }
     } catch (error) {
-      return Err(classifyThrownError(error))
+      return Err(classifyThrownError(error, this.config.apiTimeout))
     }
 
     if (audioChunks.length === 0) {
