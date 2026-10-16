@@ -87,6 +87,13 @@ everything else has a sensible default (`OPENROUTER_VOICE_MODEL=openai/gpt-audio
 `AUDIO_OUTPUT_DIR=./output`, `OPENROUTER_VOICE_DEFAULT=alloy`,
 `AUDIO_DEFAULT_FORMAT=wav`, `OPENROUTER_VOICE_ENDPOINT=auto`).
 
+`.env` files are read relative to the package, not the working directory: first
+`mcp-audio-openrouter/.env`, then the repo-root `.env` shared with the other servers.
+Variables set by your MCP client always win.
+
+A request that exceeds the fixed 120 s audio timeout fails with `TIMEOUT_ERROR` (not
+`NETWORK_ERROR`); retry, or shorten the prompt or the requested music length.
+
 `OPENROUTER_VOICE_ENDPOINT` selects the voice endpoint: `auto` (default) looks the
 model up in OpenRouter's speech catalog once per process; `chat` forces
 `/chat/completions`; `speech` forces `/audio/speech`. `chat` and `speech` skip the
@@ -121,8 +128,7 @@ Skipped unless `RUN_LIVE_SMOKE` and `OPENROUTER_API_KEY` are both set; output go
 the OS temp directory (the test logs the paths).
 
 ```bash
-# bash (loads .env without echoing the key)
-set -a; . ./.env; set +a
+# bash (the test loads .env itself: package folder, then repo root)
 RUN_LIVE_SMOKE=1 npx vitest run src/api/__tests__/openrouterSpeech.live.test.ts
 ```
 

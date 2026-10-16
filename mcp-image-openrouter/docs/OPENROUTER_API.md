@@ -123,16 +123,31 @@ Sources: context7 `/docs/guides/overview/multimodal/image-generation`,
 
 ### 3.3 Confirmed per-model capabilities (live endpoint records)
 
-| Model | resolution enum | aspect_ratio | n | input_references |
-|-------|-----------------|:---:|:---:|:---:|
-| `google/gemini-3.1-flash-image` | `512, 1K, 2K, 4K` | 14 values inc. 1:1,16:9,9:16,21:9,4:3… | 1 only | 0–14 |
-| `google/gemini-3-pro-image` | `1K, 2K` (Vertex) / `1K, 2K, 4K` (AI Studio) | 10 values | 1 only | 0–14 |
-| `google/gemini-2.5-flash-image` | _(none)_ | ✅ | 1 only | ✅ |
+| Model | resolution enum | aspect_ratio | n | input_references | Other parameters |
+|-------|-----------------|:---:|:---:|:---:|------------------|
+| `google/gemini-3.1-flash-image` | `512, 1K, 2K, 4K` | 14 values inc. 1:1,16:9,9:16,21:9,4:3… | 1 only | 0–14 | — |
+| `google/gemini-3-pro-image` | `1K, 2K, 4K` (union: AI Studio `1K, 2K, 4K`, Vertex `1K, 2K`) | 10 values | 1 only | 0–14 | — |
+| `google/gemini-2.5-flash-image` | _(none)_ | ✅ | 1 only | ✅ | — |
+| `openai/gpt-5-image`, `-mini`, `openai/gpt-image-1` | _(none)_ | `1:1, 3:2, 2:3, auto` | 1–10 | 0–16 | `quality` auto/low/medium/high; `background` auto/transparent/opaque; `output_compression`. No `resolution`, no `output_format` |
+| `openai/gpt-image-2` | _(none)_ | `1:1, 3:2, 2:3, 4:3, 3:4, 16:9, 9:16, 21:9, auto` | 1–10 | 0–16 | `quality` auto/low/medium/high; `background` auto/opaque only |
+| `openai/gpt-image-2.5-sunburst`, `-flare` | _(none)_ | same 9 as `gpt-image-2` | 1–10 | 0–16 | `quality` adds `xhigh`, `max`; `background` auto/transparent/opaque |
 
-→ **D4 handling:** pass `resolution`/`aspect_ratio` natively **only when the active model
-supports the requested value**; otherwise fold that hint into the prompt text (the old
-behavior). `n` is always 1 for Gemini — don't surface multi-image. Pricing is per output
-token (~$6e-5/token for flash) — informational.
+Captured 2026-10-16 from `GET /api/v1/images/models/{id}/endpoints` (public; write the slash
+literally, `%2F` returns 404). A model can have several `endpoints[]` records with different
+enums; the client takes the union per parameter so any value one endpoint accepts stays
+requestable. Unlisted values are rejected by the API (HTTP 400).
+
+→ **D4 handling (updated):** parameters are shaped per model by `src/api/parameterMapping.ts`
+from the live capability record (static map as fallback). `aspect_ratio` is sent natively when
+listed, mapped to the nearest listed ratio otherwise (e.g. `16:9` → `3:2` for `gpt-5-image`), and
+folded into the prompt only when the model has no aspect parameter. `resolution` is sent when
+listed, mapped to the nearest listed class otherwise, and **dropped** (never folded into the
+prompt) when the model has none. `quality: "high"` is sent only on the server `quality` tier and
+only when the model lists `quality`; `output_format` and `background` are sent only when listed.
+Every non-native outcome becomes a warning in the tool result. `n` is always 1 — don't surface
+multi-image. Pricing: Gemini flash is per output token (~$6e-5/token); `openai/gpt-5-image` is
+`$0.00001` per input-image token and `$0.00004` per output-image token (roughly $0.04–$0.21
+per image) — informational.
 
 ### Alternative surfaces (NOT chosen — kept for reference)
 - **Surface B** — chat + `tools:[{type:"openrouter:image_generation", parameters:{…}}]`; image URL in `message.content` markdown; URLs temporary.

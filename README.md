@@ -16,6 +16,10 @@ Each folder's own README has the full setup/usage instructions (MCP client confi
 variables, example prompts). Each also documents its own architecture decisions in `docs/SPEC.md` and
 a verified API contract in `docs/OPENROUTER_API.md`.
 
+## API key location
+
+All servers read `OPENROUTER_API_KEY` from `.env` files resolved relative to their own package, not the working directory: first `<server>/.env`, then the repo-root `.env`. A package `.env` wins when both exist, and variables set by your MCP client are never overridden. Put one shared `OPENROUTER_API_KEY=...` line in the repo-root `.env` (git-ignored) to serve every server.
+
 ## Why one repo?
 
 These servers don't depend on each other — they're grouped here purely so future OpenRouter-backed
