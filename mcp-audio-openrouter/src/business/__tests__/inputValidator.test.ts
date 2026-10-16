@@ -60,14 +60,17 @@ describe('inputValidator', () => {
       }
     })
 
-    it('should accept all supported voices', () => {
-      const voices: GenerateVoiceParams['voice'][] = [
+    it('should accept GPT Audio and provider-specific voice ids', () => {
+      const voices = [
         'alloy',
         'echo',
         'fable',
         'onyx',
         'nova',
         'shimmer',
+        'george',
+        'en-US-Harper:MAI-Voice-2.1',
+        'English_expressive_narrator',
       ]
       for (const voice of voices) {
         const result = validateGenerateVoiceParams({ prompt: 'hi', voice })
@@ -75,15 +78,36 @@ describe('inputValidator', () => {
       }
     })
 
-    it('should reject an invalid voice', () => {
-      const result = validateGenerateVoiceParams({
-        prompt: 'hi',
-        voice: 'robot' as unknown as GenerateVoiceParams['voice'],
-      })
+    it('should reject an empty or whitespace-only voice', () => {
+      for (const voice of ['', '   ']) {
+        const result = validateGenerateVoiceParams({ prompt: 'hi', voice })
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.error.code).toBe('INPUT_VALIDATION_ERROR')
+          expect(result.error.message).toContain('non-empty')
+        }
+      }
+    })
 
-      expect(result.success).toBe(false)
-      if (!result.success) {
-        expect(result.error.message).toContain('Invalid voice')
+    it('should enforce the 128-character voice limit', () => {
+      expect(validateGenerateVoiceParams({ prompt: 'hi', voice: 'a'.repeat(128) }).success).toBe(
+        true
+      )
+      const tooLong = validateGenerateVoiceParams({ prompt: 'hi', voice: 'a'.repeat(129) })
+      expect(tooLong.success).toBe(false)
+      if (!tooLong.success) {
+        expect(tooLong.error.code).toBe('INPUT_VALIDATION_ERROR')
+        expect(tooLong.error.message).toContain('128')
+      }
+    })
+
+    it('should reject a voice containing control characters', () => {
+      for (const voice of ['geo\u0000rge', 'geo\nrge', 'geo\u007frge']) {
+        const result = validateGenerateVoiceParams({ prompt: 'hi', voice })
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.error.message).toContain('control')
+        }
       }
     })
 

@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Err, Ok } from '../../types/result'
-import { AudioAPIError } from '../../utils/errors'
+import { AudioAPIError, InputValidationError } from '../../utils/errors'
 
 const { mockGenerateVoice, mockGenerateMusic, mockSaveAudio, mockGenerateFileName } = vi.hoisted(
   () => ({
@@ -43,8 +43,9 @@ const VOICE_METADATA = {
   prompt: 'Say hello',
   mimeType: 'audio/wav',
   timestamp: new Date('2026-09-01T00:00:00.000Z'),
-  voice: 'alloy' as const,
+  voice: 'alloy',
   transcript: 'Hello there',
+  endpoint: 'chat_completions' as const,
 }
 
 const MUSIC_METADATA = {
@@ -120,6 +121,73 @@ describe('generate_voice flow', () => {
     expect(mockGenerateVoice.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ voice: 'nova', format: 'mp3' })
     )
+  })
+
+  it('passes a provider voice id through and reports an mp3 resource from the speech path', async () => {
+    mockGenerateFileName.mockReturnValue('voice-test.mp3')
+    mockSaveAudio.mockResolvedValue(Ok('/abs/output/voice-test.mp3'))
+    mockGenerateVoice.mockResolvedValue(
+      Ok({
+        audioData: Buffer.from('fake-audio'),
+        metadata: {
+          ...VOICE_METADATA,
+          model: 'elevenlabs/eleven-v3',
+          mimeType: 'audio/mpeg',
+          voice: 'george',
+          transcript: '',
+          endpoint: 'speech' as const,
+          generationId: 'gen-123',
+        },
+      })
+    )
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_voice', {
+      prompt: 'Say hello',
+      voice: 'george',
+      format: 'mp3',
+    })
+
+    expect(result.isError).toBe(false)
+    expect(mockGenerateVoice.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ voice: 'george', format: 'mp3' })
+    )
+    expect(mockGenerateFileName).toHaveBeenCalledWith('voice', 'audio/mpeg')
+    const payload = parseResponse(result)
+    expect(payload.resource.uri).toContain('voice-test.mp3')
+    expect(payload.metadata.format).toBe('mp3')
+    expect(payload.metadata.endpoint).toBe('speech')
+    expect(payload.metadata.generationId).toBe('gen-123')
+  })
+
+  it('returns a validation error for an empty voice without calling the client', async () => {
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_voice', { prompt: 'Say hello', voice: '' })
+
+    expect(result.isError).toBe(true)
+    expect(parseResponse(result).error.code).toBe('INPUT_VALIDATION_ERROR')
+    expect(mockGenerateVoice).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an unsupported-voice failure from the client as INPUT_VALIDATION_ERROR', async () => {
+    mockGenerateVoice.mockResolvedValue(
+      Err(
+        new InputValidationError(
+          'Voice "alloy" is not supported by model "elevenlabs/eleven-v3". Supported voices: george, sarah',
+          'Pass one of the supported voices'
+        )
+      )
+    )
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_voice', { prompt: 'Say hello' })
+
+    expect(result.isError).toBe(true)
+    const payload = parseResponse(result)
+    expect(payload.error.code).toBe('INPUT_VALIDATION_ERROR')
+    expect(payload.error.message).toContain('george')
+    expect(mockSaveAudio).not.toHaveBeenCalled()
   })
 
   it('returns an error response when voice generation fails', async () => {

@@ -1,7 +1,8 @@
 /**
  * MCP Server implementation
- * Exposes `generate_voice` (GPT Audio) and `generate_music` (Lyria 3) tools,
- * both backed by a single shared `AudioClient` (see docs/SPEC.md D2).
+ * Exposes `generate_voice` (GPT Audio, or speech-only TTS models such as
+ * ElevenLabs) and `generate_music` (Lyria 3) tools, both backed by a single
+ * shared `AudioClient` (see docs/SPEC.md D2, D10).
  */
 
 import * as path from 'node:path'
@@ -27,9 +28,9 @@ import {
   AUDIO_FORMAT_VALUES,
   type GenerateMusicParams,
   type GenerateVoiceParams,
+  GPT_AUDIO_VOICES,
   type MCPServerConfig,
   MUSIC_LENGTH_VALUES,
-  VOICE_VALUES,
 } from '../types/mcp.js'
 // Utilities
 import { getConfig } from '../utils/config.js'
@@ -86,7 +87,7 @@ export class MCPServerImpl {
         {
           name: 'generate_voice',
           description:
-            'Generate spoken voice/dialogue audio from a text prompt or script, with tone/delivery instructions',
+            'Generate spoken voice/dialogue audio from a text prompt or script, with tone/delivery instructions. The speech model is chosen by the server (OPENROUTER_VOICE_MODEL): GPT Audio by default, or ElevenLabs and other OpenRouter TTS models when configured.',
           inputSchema: {
             type: 'object' as const,
             properties: {
@@ -102,13 +103,12 @@ export class MCPServerImpl {
               },
               voice: {
                 type: 'string' as const,
-                description: 'Voice preset for speech synthesis',
-                enum: [...VOICE_VALUES],
+                description: `Voice id for speech synthesis; ids are model-specific. GPT Audio (openai/gpt-audio): ${GPT_AUDIO_VOICES.join(', ')}. ElevenLabs models: e.g. george, sarah, adam, alice (see the model page on openrouter.ai for the full list). An id the configured model does not support is rejected with the list of supported voices. Defaults to the server-configured voice (OPENROUTER_VOICE_DEFAULT).`,
               },
               format: {
                 type: 'string' as const,
                 description:
-                  "Output audio container/codec. Currently always produces WAV regardless of this setting — OpenRouter's streaming voice endpoint only returns raw PCM, which is wrapped in a WAV container; mp3 is accepted for schema symmetry with generate_music but not yet honored.",
+                  'Output audio container/codec. With speech-only models (ElevenLabs, other TTS models) mp3 is honored and wav is produced from the returned PCM. With GPT Audio the output is always WAV regardless of this setting: its streaming endpoint only returns raw PCM, which is wrapped in a WAV container.',
                 enum: [...AUDIO_FORMAT_VALUES],
               },
             },

@@ -32,6 +32,7 @@ describe('ResponseBuilder', () => {
           timestamp: new Date('2026-09-01T12:00:00Z'),
           voice: 'alloy',
           transcript: 'Hello there',
+          endpoint: 'chat_completions',
         },
       }
       const testFilePath = '/path/to/voice-123.wav'
@@ -51,6 +52,8 @@ describe('ResponseBuilder', () => {
       expect(contentData.metadata.voice).toBe('alloy')
       expect(contentData.metadata.transcript).toBe('Hello there')
       expect(contentData.metadata.format).toBe('wav')
+      expect(contentData.metadata.endpoint).toBe('chat_completions')
+      expect(contentData.metadata.generationId).toBeUndefined()
     })
 
     it('should report format mp3 for audio/mpeg mime type', () => {
@@ -64,6 +67,7 @@ describe('ResponseBuilder', () => {
           timestamp: new Date('2026-09-01T12:00:00Z'),
           voice: 'nova',
           transcript: 'Hi',
+          endpoint: 'chat_completions',
         },
       }
 
@@ -74,6 +78,34 @@ describe('ResponseBuilder', () => {
       const contentData = JSON.parse(response.content[0]?.text ?? '{}')
       expect(contentData.metadata.format).toBe('mp3')
       expect(contentData.resource.mimeType).toBe('audio/mpeg')
+    })
+
+    it('should report the speech endpoint, generationId, and no transcript for a speech-path result', () => {
+      const generationResult: GeneratedVoiceResult = {
+        audioData: Buffer.from('fake-audio-data'),
+        metadata: {
+          model: 'elevenlabs/eleven-v3',
+          provider: 'openrouter',
+          prompt: 'Say hello',
+          mimeType: 'audio/mpeg',
+          timestamp: new Date('2026-09-01T12:00:00Z'),
+          voice: 'george',
+          transcript: '',
+          endpoint: 'speech',
+          generationId: 'gen-123',
+        },
+      }
+
+      const response = responseBuilder.buildVoiceSuccessResponse(
+        generationResult,
+        '/path/to/voice.mp3'
+      )
+      const contentData = JSON.parse(response.content[0]?.text ?? '{}')
+      expect(contentData.metadata.endpoint).toBe('speech')
+      expect(contentData.metadata.generationId).toBe('gen-123')
+      expect(contentData.metadata.voice).toBe('george')
+      expect(contentData.metadata.format).toBe('mp3')
+      expect('transcript' in contentData.metadata).toBe(false)
     })
   })
 

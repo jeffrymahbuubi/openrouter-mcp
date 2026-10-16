@@ -39,18 +39,31 @@ describe('MCPServerImpl', () => {
     )
   })
 
-  it('advertises the documented voice, length, and format enums', () => {
+  it('advertises an open voice string and the documented length and format enums', () => {
     const server = createMCPServer()
     const { tools } = server.getToolsList()
     const voiceProps = tools.find((t) => t.name === 'generate_voice')?.inputSchema
-      .properties as Record<string, { enum?: string[] }>
+      .properties as Record<string, { enum?: string[]; type?: string; description?: string }>
     const musicProps = tools.find((t) => t.name === 'generate_music')?.inputSchema
       .properties as Record<string, { enum?: string[] }>
 
-    expect(voiceProps.voice?.enum).toEqual(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'])
+    expect(voiceProps.voice?.type).toBe('string')
+    expect(voiceProps.voice?.enum).toBeUndefined()
+    expect(voiceProps.voice?.description).toContain('george')
+    expect(voiceProps.voice?.description).toContain('alloy')
     expect(voiceProps.format?.enum).toEqual(['wav', 'mp3'])
     expect(musicProps.length?.enum).toEqual(['clip', 'long'])
     expect(musicProps.format?.enum).toEqual(['wav', 'mp3'])
+  })
+
+  it('describes both voice endpoints and ElevenLabs support in the generate_voice tool', () => {
+    const server = createMCPServer()
+    const voiceTool = server.getToolsList().tools.find((t) => t.name === 'generate_voice')
+    const props = voiceTool?.inputSchema.properties as Record<string, { description?: string }>
+
+    expect(voiceTool?.description).toContain('OPENROUTER_VOICE_MODEL')
+    expect(voiceTool?.description).toContain('ElevenLabs')
+    expect(props.format?.description).toContain('mp3')
   })
 
   it('returns an error for an unknown tool name', async () => {

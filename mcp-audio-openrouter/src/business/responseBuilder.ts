@@ -156,7 +156,13 @@ export function createResponseBuilder(): ResponseBuilder {
           provider: 'openrouter',
           voice: generationResult.metadata.voice,
           format: mimeType === 'audio/mpeg' ? 'mp3' : 'wav',
-          transcript: generationResult.metadata.transcript,
+          endpoint: generationResult.metadata.endpoint,
+          ...(generationResult.metadata.generationId && {
+            generationId: generationResult.metadata.generationId,
+          }),
+          ...(generationResult.metadata.endpoint === 'chat_completions' && {
+            transcript: generationResult.metadata.transcript,
+          }),
           processingTime: 0,
           timestamp: generationResult.metadata.timestamp.toISOString(),
         },

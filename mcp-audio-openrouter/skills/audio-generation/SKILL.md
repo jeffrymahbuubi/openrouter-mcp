@@ -1,6 +1,6 @@
 ---
 name: audio-generation
-description: Crafts prompts for spoken voice/dialogue generation (GPT Audio) and instrumental music generation (Lyria 3). Use this skill when generating voiceover, narration, character dialogue, sound design descriptions, background music, game/video soundtracks, or crafting prompts for any audio generation model.
+description: Crafts prompts for spoken voice/dialogue generation (GPT Audio, ElevenLabs and other TTS models) and instrumental music generation (Lyria 3). Use this skill when generating voiceover, narration, character dialogue, sound design descriptions, background music, game/video soundtracks, or crafting prompts for any audio generation model.
 ---
 
 # Audio Generation Prompt Best Practices
@@ -22,7 +22,17 @@ Combine the literal words to speak with delivery instructions:
 - **Be explicit about tone** — "Say in a warm, reassuring tone" beats no instruction at all; the model defaults to a neutral read otherwise
 - **Control pacing with punctuation and instruction** — "speak slowly, with pauses between sentences" or use ellipses/commas to suggest natural pauses
 - **Specify emphasis** — call out which words should land harder: "emphasize 'now' and 'immediately'"
-- **Match voice to character** — pick a `voice` preset (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) that fits the intended persona; when unsure, `alloy` is a safe neutral default
+- **Match voice to character** — pick a `voice` that fits the intended persona, from the list for the configured model (see "Pick a voice for the configured model" below)
+
+### Pick a voice for the configured model
+
+Voice ids belong to the model the server is configured with (`OPENROUTER_VOICE_MODEL`); an id from another provider is rejected with the list of supported voices. If you do not know the model, omit `voice` and the server uses its configured default.
+
+- **GPT Audio (`openai/gpt-audio`, the default):** `alloy` (safe neutral default), `echo`, `fable`, `onyx`, `nova`, `shimmer`.
+- **ElevenLabs (`elevenlabs/eleven-v3`, `eleven-v4`, ...):** 21 voices: `george, sarah, adam, alice, bella, bill, brian, callum, charlie, chris, daniel, eric, harry, jessica, laura, liam, lily, matilda, river, roger, will`. Rough persona hints (from ElevenLabs' voice library, so confirm by listening): `george` warm storyteller, `adam` deep and firm, `brian` deep and comforting, `sarah` soft and reassuring, `alice` clear educator.
+- **Other TTS models:** check the model's page on openrouter.ai (its `supported_voices`); some models take no fixed voice.
+
+ElevenLabs v3/v4 models accept inline audio tags in the prompt for emotion and delivery (for example `[whispers]`, `[laughs]`, `[sighs]`), so on those models put delivery cues in tags next to the words they affect rather than as a spoken-style preamble. GPT Audio has no audio tags and follows the "say in a ... tone" phrasing in the patterns below.
 
 ### Enhancement Patterns
 
@@ -37,7 +47,7 @@ Combine the literal words to speak with delivery instructions:
 ### Ambiguous Cases
 
 - When the user provides only raw dialogue text with no tone cues, ask whether a specific delivery style is wanted before assuming neutral narration matters for the use case (e.g. game character voice lines usually do).
-- When the target `voice` preset isn't specified and the character has a distinct persona (e.g. "gravelly old wizard"), pick the closest preset and say which one you chose and why.
+- When the target `voice` isn't specified and the character has a distinct persona (e.g. "gravelly old wizard"), pick the closest voice for the configured model and say which one you chose and why.
 
 ## generate_music — Instrumental Background Music
 

@@ -1,8 +1,12 @@
 /**
- * OpenRouter audio client for both voice (GPT Audio) and music (Lyria 3)
- * generation.
+ * OpenRouter audio client for both voice and music (Lyria 3) generation.
  *
- * Both models are reached via a raw `fetch` POST to `{baseUrl}/chat/completions`
+ * `generateVoice` routes between two paths: speech-only TTS models (ElevenLabs,
+ * ...) go to `POST /audio/speech` (see `speechEndpoint.ts`); GPT Audio and
+ * music use the chat-completions path below. Routing is catalog-driven with an
+ * `OPENROUTER_VOICE_ENDPOINT` override (docs/SPEC.md D10).
+ *
+ * The chat path is a raw `fetch` POST to `{baseUrl}/chat/completions`
  * with `modalities:["text","audio"]` and `stream:true` — OpenRouter's audio
  * output requires streaming; the response arrives as SSE chunks whose
  * `choices[0].delta.audio.data` fields carry base64 audio fragments (see
@@ -19,7 +23,7 @@ import { Err, Ok } from '../types/result.js'
 import { sniffAudioFormat } from '../utils/audioFormatSniffer.js'
 import type { Config } from '../utils/config.js'
 import { selectMusicModel } from '../utils/config.js'
-import { AudioAPIError, NetworkError } from '../utils/errors.js'
+import { AudioAPIError, InputValidationError, type NetworkError } from '../utils/errors.js'
 import { Logger } from '../utils/logger.js'
 import { mimeTypeForFormat } from '../utils/mimeUtils.js'
 import { pcm16ToWav } from '../utils/pcmToWav.js'
@@ -30,7 +34,9 @@ import type {
   MusicApiParams,
   VoiceApiParams,
 } from './audioClient.js'
-import { isNetworkError } from './errorClassification.js'
+import { buildHttpError, classifyThrownError } from './errorClassification.js'
+import { createModelCatalog, type ModelCatalog } from './modelCatalog.js'
+import { requestSpeech } from './speechEndpoint.js'
 
 /**
  * The wire-level `audio.format` accepted by OpenRouter's streaming
@@ -64,14 +70,77 @@ interface StreamedAudio {
   transcript: string
 }
 
+type VoiceError = AudioAPIError | NetworkError | InputValidationError
+
 class OpenRouterAudioClientImpl implements AudioClient {
   private readonly logger = new Logger()
+  private readonly catalog: ModelCatalog
 
-  constructor(private readonly config: Config) {}
+  constructor(private readonly config: Config) {
+    this.catalog = createModelCatalog(config)
+  }
 
-  async generateVoice(
+  /**
+   * Router: picks the speech or chat path from `voiceEndpoint` and, in `auto`
+   * mode, the model catalog.
+   */
+  async generateVoice(params: VoiceApiParams): Promise<Result<GeneratedVoiceResult, VoiceError>> {
+    const { voiceEndpoint, voiceModel } = this.config
+    if (voiceEndpoint === 'chat') {
+      return this.generateVoiceViaChat(params)
+    }
+    if (voiceEndpoint === 'speech') {
+      return this.generateVoiceViaSpeech(params)
+    }
+
+    const info = await this.catalog.describeVoiceModel(voiceModel)
+    if (!info.success) {
+      return Err(info.error)
+    }
+    if (!info.data.speechOnly) {
+      return this.generateVoiceViaChat(params)
+    }
+
+    const supported = info.data.supportedVoices
+    if (supported && !supported.includes(params.voice)) {
+      return Err(
+        new InputValidationError(
+          `Voice "${params.voice}" is not supported by model "${voiceModel}". Supported voices: ${supported.join(', ')}`,
+          `Pass one of the supported voices, or set OPENROUTER_VOICE_DEFAULT to one of them (current model: ${voiceModel})`
+        )
+      )
+    }
+    return this.generateVoiceViaSpeech(params)
+  }
+
+  private async generateVoiceViaSpeech(
     params: VoiceApiParams
-  ): Promise<Result<GeneratedVoiceResult, AudioAPIError | NetworkError>> {
+  ): Promise<Result<GeneratedVoiceResult, VoiceError>> {
+    const model = this.config.voiceModel
+    const speech = await requestSpeech(this.config, model, params)
+    if (!speech.success) {
+      return Err(speech.error)
+    }
+
+    return Ok({
+      audioData: speech.data.audioData,
+      metadata: {
+        model,
+        provider: 'openrouter',
+        prompt: params.prompt,
+        mimeType: speech.data.mimeType,
+        timestamp: new Date(),
+        voice: params.voice,
+        transcript: '',
+        endpoint: 'speech',
+        ...(speech.data.generationId && { generationId: speech.data.generationId }),
+      },
+    })
+  }
+
+  private async generateVoiceViaChat(
+    params: VoiceApiParams
+  ): Promise<Result<GeneratedVoiceResult, VoiceError>> {
     const model = this.config.voiceModel
     // Only "pcm16" is accepted for streaming audio output on this endpoint
     // (verified live — see WireAudioFormat doc comment above); params.format
@@ -108,6 +177,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
         timestamp: new Date(),
         voice: params.voice,
         transcript: streamResult.data.transcript,
+        endpoint: 'chat_completions',
       },
     })
   }
@@ -192,11 +262,11 @@ class OpenRouterAudioClientImpl implements AudioClient {
         signal: AbortSignal.timeout(this.config.apiTimeout),
       })
     } catch (error) {
-      return this.handleThrownError(error)
+      return Err(classifyThrownError(error))
     }
 
     if (!response.ok) {
-      return Err(await this.buildHttpError(response, model))
+      return Err(await buildHttpError(response, { model, stage: 'audio_generation' }))
     }
 
     if (!response.body) {
@@ -251,7 +321,7 @@ class OpenRouterAudioClientImpl implements AudioClient {
         }
       }
     } catch (error) {
-      return this.handleThrownError(error)
+      return Err(classifyThrownError(error))
     }
 
     if (audioChunks.length === 0) {
@@ -266,79 +336,6 @@ class OpenRouterAudioClientImpl implements AudioClient {
     }
 
     return Ok({ audioBase64: audioChunks.join(''), transcript })
-  }
-
-  private async buildHttpError(response: Response, model: string): Promise<AudioAPIError> {
-    let upstreamMessage = `HTTP ${response.status}`
-    try {
-      const text = await response.text()
-      if (text) {
-        upstreamMessage = text
-      }
-    } catch {
-      // ignore body read failures; status is enough
-    }
-
-    return new AudioAPIError(
-      `OpenRouter audio API request failed (HTTP ${response.status})`,
-      {
-        provider: 'openrouter',
-        model,
-        stage: 'audio_generation',
-        upstreamMessage,
-        suggestion: this.getAPIErrorSuggestion(`${response.status} ${upstreamMessage}`, model),
-      },
-      response.status
-    )
-  }
-
-  private handleThrownError(error: unknown): Result<never, AudioAPIError | NetworkError> {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    const name = error instanceof Error ? error.name : ''
-
-    // `fetch` throws TypeError on transport failure and TimeoutError/AbortError
-    // on an aborted request — all network-class failures.
-    if (
-      isNetworkError(error) ||
-      error instanceof TypeError ||
-      name === 'TimeoutError' ||
-      name === 'AbortError'
-    ) {
-      return Err(
-        new NetworkError(
-          'Network error during OpenRouter audio generation',
-          'Check your internet connection and try again',
-          error instanceof Error ? error : undefined
-        )
-      )
-    }
-
-    return Err(
-      new AudioAPIError('Failed to generate audio with OpenRouter', {
-        provider: 'openrouter',
-        upstreamMessage: errorMessage,
-        suggestion: 'Check OpenRouter API configuration and try again',
-      })
-    )
-  }
-
-  private getAPIErrorSuggestion(errorMessage: string, model: string): string {
-    const lowerMessage = errorMessage.toLowerCase()
-
-    if (lowerMessage.includes('quota') || lowerMessage.includes('rate limit')) {
-      return 'You have exceeded your OpenRouter quota or rate limit. Wait before retrying or add credits'
-    }
-    if (lowerMessage.includes('401') || lowerMessage.includes('unauthorized')) {
-      return 'Check that your OPENROUTER_API_KEY is valid and has audio generation access'
-    }
-    if (
-      lowerMessage.includes('404') ||
-      lowerMessage.includes('model') ||
-      lowerMessage.includes('not found')
-    ) {
-      return `Ensure the audio model "${model}" exists and is available on OpenRouter`
-    }
-    return 'Check OpenRouter API configuration and try again'
   }
 }
 

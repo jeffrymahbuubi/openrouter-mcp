@@ -15,6 +15,9 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     openrouterApiKey: 'sk-or-test-key-12345',
     baseUrl: 'https://openrouter.ai/api/v1',
     voiceModel: 'openai/gpt-audio',
+    // Legacy chat-path tests skip the catalog lookup; routing is covered in
+    // openrouterAudioClient.voice.test.ts.
+    voiceEndpoint: 'chat',
     musicModel: 'google/lyria-3-clip-preview',
     musicModelLong: 'google/lyria-3-pro-preview',
     audioOutputDir: './output',

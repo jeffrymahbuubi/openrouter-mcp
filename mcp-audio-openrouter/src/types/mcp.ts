@@ -4,12 +4,19 @@
  */
 
 /**
- * Voice presets supported by OpenAI's GPT Audio (`openai/gpt-audio` on OpenRouter).
- * See docs/OPENROUTER_API.md §2.
+ * Voice identifier. Provider-specific: GPT Audio uses the presets in
+ * `GPT_AUDIO_VOICES`; speech-only TTS models (ElevenLabs, ...) use their own
+ * ids (e.g. `george`). Shape is validated in `utils/voiceId.ts`; membership
+ * is checked against the model's catalog `supported_voices`.
  */
-export type Voice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer'
+export type Voice = string
 
-export const VOICE_VALUES: readonly Voice[] = [
+/**
+ * Voice presets supported by OpenAI's GPT Audio (`openai/gpt-audio` on
+ * OpenRouter). Documentation/description constant only, not a validation
+ * list. See docs/OPENROUTER_API.md §2.
+ */
+export const GPT_AUDIO_VOICES: readonly string[] = [
   'alloy',
   'echo',
   'fable',
@@ -43,7 +50,7 @@ export interface GenerateVoiceParams {
   prompt: string
   /** Custom file name for the output audio. Auto-generated if not specified. */
   fileName?: string
-  /** Voice preset for speech synthesis (default: server-configured default). */
+  /** Voice id for speech synthesis (default: server-configured default). */
   voice?: Voice
   /** Output audio container/codec (default: "wav"). */
   format?: AudioFormat
@@ -108,6 +115,11 @@ export interface VoiceStructuredContent {
     provider: 'openrouter'
     voice: string
     format: AudioFormat
+    /** Which OpenRouter endpoint produced the audio. */
+    endpoint: 'chat_completions' | 'speech'
+    /** `X-Generation-Id` from the speech endpoint, when present. */
+    generationId?: string
+    /** Omitted on the speech path (that endpoint returns no transcript). */
     transcript?: string
     processingTime: number
     timestamp: string

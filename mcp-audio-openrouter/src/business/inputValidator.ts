@@ -4,10 +4,11 @@
  */
 
 import type { GenerateMusicParams, GenerateVoiceParams } from '../types/mcp.js'
-import { AUDIO_FORMAT_VALUES, MUSIC_LENGTH_VALUES, VOICE_VALUES } from '../types/mcp.js'
+import { AUDIO_FORMAT_VALUES, MUSIC_LENGTH_VALUES } from '../types/mcp.js'
 import type { Result } from '../types/result.js'
 import { Err, Ok } from '../types/result.js'
 import { InputValidationError } from '../utils/errors.js'
+import { describeVoiceIdProblem } from '../utils/voiceId.js'
 
 // Constants for validation limits
 const PROMPT_MIN_LENGTH = 1
@@ -42,13 +43,16 @@ export function validateGenerateVoiceParams(
     return Err(promptResult.error)
   }
 
-  if (params.voice !== undefined && !VOICE_VALUES.includes(params.voice)) {
-    return Err(
-      new InputValidationError(
-        `Invalid voice: "${params.voice}". Supported values: ${VOICE_VALUES.join(', ')}`,
-        `Please use one of the supported voices: ${VOICE_VALUES.join(', ')}`
+  if (params.voice !== undefined) {
+    const problem = describeVoiceIdProblem(params.voice)
+    if (problem) {
+      return Err(
+        new InputValidationError(
+          `Invalid voice: ${problem}`,
+          'Provide a voice id valid for the configured model (e.g. "alloy" for openai/gpt-audio, "george" for ElevenLabs), or omit voice to use the configured default.'
+        )
       )
-    )
+    }
   }
 
   if (params.format !== undefined && !AUDIO_FORMAT_VALUES.includes(params.format)) {
