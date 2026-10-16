@@ -8,9 +8,10 @@
  * - (default)       → MCP server startup
  */
 
-// Load .env for local dev/testing. dotenv does not override already-set env
-// vars, so MCP-client-provided env config always wins (D10).
-import 'dotenv/config'
+// Load .env relative to this package (package .env first, then the repo-root
+// .env). Already-set env vars are never overridden, so MCP-client-provided env
+// config always wins.
+import './utils/loadEnv.js'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 

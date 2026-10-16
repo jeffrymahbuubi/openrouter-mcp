@@ -4,3 +4,9 @@
 Thumbs.db
 *.log
 .idea/
+
+# Shared monorepo API key location (both servers load it; a package .env wins).
+# Explicit patterns, not a bare `.env*`, so `.env.example` files stay trackable.
+.env
+.env.local
+.env.*.local

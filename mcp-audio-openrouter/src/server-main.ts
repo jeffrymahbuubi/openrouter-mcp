@@ -2,8 +2,9 @@
  * MCP Audio Generator - Server Entry Point
  */
 
-// Load .env for local dev/testing (non-overriding; MCP-client env wins).
-import 'dotenv/config'
+// Load .env relative to this package, then the repo root (non-overriding;
+// MCP-client env wins). Must stay the first import.
+import './utils/loadEnv.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { MCPServerImpl } from './server/mcpServer.js'
 import { Logger } from './utils/logger.js'

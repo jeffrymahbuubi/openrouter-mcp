@@ -2,11 +2,17 @@
  * MCP Image Generator - Server Entry Point
  */
 
-// Load .env for local dev/testing (non-overriding; MCP-client env wins, D10).
-import 'dotenv/config'
+// Load .env relative to this package, then the repo root (non-overriding;
+// MCP-client env wins). Must stay the first import.
+import './utils/loadEnv.js'
+import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { MCPServerImpl } from './server/mcpServer.js'
 import { Logger } from './utils/logger.js'
+
+// Windows happy-eyeballs: the default 250 ms attempt timeout makes dual-stack
+// connects to openrouter.ai fail with ETIMEDOUT. Must run before any fetch.
+setDefaultAutoSelectFamilyAttemptTimeout(500)
 
 const logger = new Logger()
 

@@ -15,7 +15,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import 'dotenv/config'
+import '../../utils/loadEnv'
 import { describe, expect, it } from 'vitest'
 import { sniffAudioFormat } from '../../utils/audioFormatSniffer'
 import type { Config } from '../../utils/config'
