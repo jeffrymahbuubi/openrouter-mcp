@@ -5,38 +5,20 @@
  * `{baseUrl}/images` (decision (c): the OpenAI SDK's images.generate() targets
  * a different path). Verified contract: docs/OPENROUTER_API.md §3 —
  * request `{model,prompt,n,aspect_ratio?,resolution?,input_references?}`,
- * response `{data:[{b64_json,media_type?}]}` (raw base64).
+ * response `{data:[{b64_json,media_type?}]}` (raw base64). Request parameters are
+ * shaped per model by `parameterMapping.ts` using `modelCapabilities.ts`.
  */
 
-import type { ImageQuality, ImageSize } from '../types/mcp.js'
+import type { ImageQuality } from '../types/mcp.js'
 import type { Result } from '../types/result.js'
 import { Err, Ok } from '../types/result.js'
 import type { Config } from '../utils/config.js'
-import { ImageAPIError, NetworkError } from '../utils/errors.js'
+import { ImageAPIError, NetworkError, TimeoutError } from '../utils/errors.js'
 import { DEFAULT_MIME_TYPE, normalizeMimeType } from '../utils/mimeUtils.js'
 import { isNetworkError } from './errorClassification.js'
 import type { GeneratedImageResult, ImageApiParams, ImageClient } from './imageClient.js'
-
-/**
- * Native-parameter support per image model, from the verified
- * `GET /api/v1/images/models` capability records (2026-07-11). Models absent
- * from this map are treated conservatively (no native params → prompt folding).
- */
-interface ModelCapabilities {
-  aspectRatio: boolean
-  resolution: boolean
-}
-
-const MODEL_CAPABILITIES: Readonly<Record<string, ModelCapabilities>> = {
-  'google/gemini-2.5-flash-image': { aspectRatio: true, resolution: false },
-  'google/gemini-3.1-flash-lite-image': { aspectRatio: true, resolution: true },
-  'google/gemini-3.1-flash-image': { aspectRatio: true, resolution: true },
-  'google/gemini-3.1-flash-image-preview': { aspectRatio: true, resolution: true },
-  'google/gemini-3-pro-image': { aspectRatio: true, resolution: true },
-  'google/gemini-3-pro-image-preview': { aspectRatio: true, resolution: true },
-}
-
-const DEFAULT_CAPABILITIES: ModelCapabilities = { aspectRatio: false, resolution: false }
+import { type CapabilityResolver, createCapabilityResolver } from './modelCapabilities.js'
+import { type MappedParameters, mapParameters } from './parameterMapping.js'
 
 interface ImagesApiImage {
   b64_json?: string
@@ -52,21 +34,30 @@ interface ImagesApiRequest {
   prompt: string
   n: number
   aspect_ratio?: string
-  resolution?: ImageSize
+  resolution?: string
+  quality?: string
+  output_format?: string
+  background?: string
   input_references?: Array<{ type: 'image_url'; image_url: { url: string } }>
 }
 
 class OpenRouterImageClientImpl implements ImageClient {
-  constructor(private readonly config: Config) {}
+  private readonly capabilities: CapabilityResolver
+
+  constructor(private readonly config: Config) {
+    this.capabilities = createCapabilityResolver(config)
+  }
 
   async generateImage(
     params: ImageApiParams
-  ): Promise<Result<GeneratedImageResult, ImageAPIError | NetworkError>> {
-    const model = this.selectModel(params.quality ?? this.config.imageQuality)
-    const caps = MODEL_CAPABILITIES[model] ?? DEFAULT_CAPABILITIES
+  ): Promise<Result<GeneratedImageResult, ImageAPIError | NetworkError | TimeoutError>> {
+    const tier = params.quality ?? this.config.imageQuality
+    const model = this.selectModel(tier)
+    const caps = await this.capabilities.resolve(model)
+    const mapped = mapParameters({ ...params, quality: tier }, caps)
+    const request = this.buildRequest(params, model, mapped)
 
-    const request = this.buildRequest(params, model, caps)
-
+    const startedAt = Date.now()
     let response: Response
     try {
       response = await fetch(`${this.config.baseUrl}/images`, {
@@ -78,7 +69,7 @@ class OpenRouterImageClientImpl implements ImageClient {
           ...(this.config.appTitle && { 'X-Title': this.config.appTitle }),
         },
         body: JSON.stringify(request),
-        signal: AbortSignal.timeout(this.config.apiTimeout),
+        signal: AbortSignal.timeout(this.config.imageApiTimeout),
       })
     } catch (error) {
       return this.handleThrownError(error)
@@ -115,6 +106,8 @@ class OpenRouterImageClientImpl implements ImageClient {
     }
 
     const mimeType = image.media_type ? normalizeMimeType(image.media_type) : DEFAULT_MIME_TYPE
+    // Clamp to 1 ms so a real request is never reported as the untracked value 0.
+    const durationMs = Math.max(1, Date.now() - startedAt)
 
     return Ok({
       imageData: Buffer.from(image.b64_json, 'base64'),
@@ -125,6 +118,10 @@ class OpenRouterImageClientImpl implements ImageClient {
         mimeType,
         timestamp: new Date(),
         inputImageProvided: !!params.inputImage,
+        durationMs,
+        requested: mapped.requested,
+        delivered: mapped.delivered,
+        warnings: mapped.warnings,
       },
     })
   }
@@ -137,29 +134,19 @@ class OpenRouterImageClientImpl implements ImageClient {
   private buildRequest(
     params: ImageApiParams,
     model: string,
-    caps: ModelCapabilities
+    mapped: MappedParameters
   ): ImagesApiRequest {
-    let prompt = params.prompt
-
-    const request: ImagesApiRequest = { model, prompt, n: 1 }
-
-    // Aspect ratio: native when supported, otherwise fold into the prompt (D4).
-    if (params.aspectRatio) {
-      if (caps.aspectRatio) {
-        request.aspect_ratio = params.aspectRatio
-      } else {
-        prompt += `\n\nComposition: frame the image with a strict ${params.aspectRatio} aspect ratio.`
-      }
+    const request: ImagesApiRequest = {
+      model,
+      prompt: params.prompt + mapped.promptSuffix,
+      n: 1,
     }
 
-    // Image size: native `resolution` when supported, otherwise fold (D4).
-    if (params.imageSize) {
-      if (caps.resolution) {
-        request.resolution = params.imageSize
-      } else {
-        prompt += `\n\nRender at high resolution (~${params.imageSize}), with crisp fine detail and sharp text.`
-      }
-    }
+    if (mapped.aspect_ratio) request.aspect_ratio = mapped.aspect_ratio
+    if (mapped.resolution) request.resolution = mapped.resolution
+    if (mapped.quality) request.quality = mapped.quality
+    if (mapped.output_format) request.output_format = mapped.output_format
+    if (mapped.background) request.background = mapped.background
 
     // useGoogleSearch: no real-time grounding on OpenRouter image models — soft
     // hint only, never a hard error (D4).
@@ -171,7 +158,6 @@ class OpenRouterImageClientImpl implements ImageClient {
       ]
     }
 
-    request.prompt = prompt
     return request
   }
 
@@ -199,18 +185,24 @@ class OpenRouterImageClientImpl implements ImageClient {
     )
   }
 
-  private handleThrownError(error: unknown): Result<never, ImageAPIError | NetworkError> {
+  private handleThrownError(
+    error: unknown
+  ): Result<never, ImageAPIError | NetworkError | TimeoutError> {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const name = error instanceof Error ? error.name : ''
 
-    // `fetch` throws TypeError on transport failure and TimeoutError/AbortError
-    // on an aborted request — all network-class failures.
-    if (
-      isNetworkError(error) ||
-      error instanceof TypeError ||
-      name === 'TimeoutError' ||
-      name === 'AbortError'
-    ) {
+    // `fetch` throws TimeoutError/AbortError when AbortSignal.timeout fires.
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      return Err(
+        new TimeoutError(
+          `OpenRouter image generation exceeded ${this.config.imageApiTimeout} ms`,
+          this.config.imageApiTimeout
+        )
+      )
+    }
+
+    // `fetch` throws TypeError on transport failure.
+    if (isNetworkError(error) || error instanceof TypeError) {
       return Err(
         new NetworkError(
           'Network error during OpenRouter image generation',

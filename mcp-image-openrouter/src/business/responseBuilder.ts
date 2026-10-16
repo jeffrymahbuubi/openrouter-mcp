@@ -15,6 +15,7 @@ import {
   InputValidationError,
   NetworkError,
   SecurityError,
+  TimeoutError,
 } from '../utils/errors.js'
 import { sanitizeText } from '../utils/logger.js'
 import { getMimeTypeFromExtension, SUPPORTED_MIME_TYPES } from '../utils/mimeUtils.js'
@@ -27,7 +28,7 @@ const DEFAULT_ERROR_SUGGESTION = 'Please try again or contact support if the pro
  * list (notably `prompt`, which the caller already supplied, and any future
  * additions) stays out of the wire format.
  */
-const SAFE_CONTEXT_KEYS = ['provider', 'stage', 'statusCode'] as const
+const SAFE_CONTEXT_KEYS = ['provider', 'stage', 'statusCode', 'timeoutMs'] as const
 
 /**
  * Project an error's context object into a sanitized subset suitable for
@@ -83,6 +84,11 @@ export interface ResponseBuilder {
  * @param filePath Path to the image file (used for fallback)
  * @returns MIME type string
  */
+/** `image/webp` -> `webp`; the delivered file format as a bare token. */
+function formatFromMimeType(mimeType: string): string {
+  return mimeType.replace(/^image\//, '')
+}
+
 function resolveMimeType(metadataMimeType: string | undefined, filePath: string): string {
   if (metadataMimeType && SUPPORTED_MIME_TYPES.includes(metadataMimeType)) {
     return metadataMimeType
@@ -113,6 +119,7 @@ function convertErrorToStructured(error: BaseError | Error): {
     error instanceof GeminiAPIError ||
     error instanceof ImageAPIError ||
     error instanceof NetworkError ||
+    error instanceof TimeoutError ||
     error instanceof ConfigError ||
     error instanceof SecurityError
   ) {
@@ -170,9 +177,20 @@ export function createResponseBuilder(): ResponseBuilder {
           ...(generationResult.metadata.provider && {
             provider: generationResult.metadata.provider,
           }),
-          processingTime: 0, // Not tracked in simplified version
+          processingTime: generationResult.metadata.durationMs,
+          durationMs: generationResult.metadata.durationMs,
           contextMethod: 'structured_prompt',
           timestamp: generationResult.metadata.timestamp.toISOString(),
+          ...(generationResult.metadata.width !== undefined && {
+            width: generationResult.metadata.width,
+          }),
+          ...(generationResult.metadata.height !== undefined && {
+            height: generationResult.metadata.height,
+          }),
+          format: formatFromMimeType(mimeType),
+          requested: generationResult.metadata.requested,
+          delivered: generationResult.metadata.delivered,
+          warnings: generationResult.metadata.warnings,
         },
       }
 

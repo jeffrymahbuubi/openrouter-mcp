@@ -34,8 +34,10 @@ export interface Config {
   appTitle?: string
   /** Output directory for generated images (absolute recommended for Claude Desktop). */
   imageOutputDir: string
-  /** API timeout in milliseconds. */
+  /** API timeout in milliseconds (text client). */
   apiTimeout: number
+  /** Image-generation request timeout in milliseconds (`OPENROUTER_IMAGE_TIMEOUT_MS`). */
+  imageApiTimeout: number
   /** Skip prompt enhancement for direct control. */
   skipPromptEnhancement: boolean
   /** Quality preset controlling image model selection. */
@@ -54,7 +56,31 @@ const DEFAULT_CONFIG = {
   imageModel: 'google/gemini-3.1-flash-image',
   imageOutputDir: './output',
   apiTimeout: 30000, // 30 seconds
+  // GPT image models need 60-120 s; 180 s leaves headroom.
+  imageApiTimeout: 180000,
 } as const
+
+const IMAGE_TIMEOUT_ENV = 'OPENROUTER_IMAGE_TIMEOUT_MS'
+
+function imageTimeoutError(message: string): ConfigError {
+  return new ConfigError(
+    message,
+    `Set ${IMAGE_TIMEOUT_ENV} to a positive integer number of milliseconds (default ${DEFAULT_CONFIG.imageApiTimeout})`
+  )
+}
+
+/** Parses `OPENROUTER_IMAGE_TIMEOUT_MS`: a trimmed, positive, whole number of ms. */
+function parseImageTimeout(raw: string | undefined): Result<number, ConfigError> {
+  if (raw === undefined) {
+    return Ok(DEFAULT_CONFIG.imageApiTimeout)
+  }
+  const trimmed = raw.trim()
+  const value = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    return Err(imageTimeoutError(`${IMAGE_TIMEOUT_ENV} must be a positive integer, got "${raw}"`))
+  }
+  return Ok(value)
+}
 
 function readEnv(name: string): string | undefined {
   const value = process.env[name]
@@ -128,6 +154,11 @@ export function validateConfig(config: Config): Result<Config, ConfigError> {
     )
   }
 
+  // Validate imageApiTimeout
+  if (!Number.isInteger(config.imageApiTimeout) || config.imageApiTimeout <= 0) {
+    return Err(imageTimeoutError(`${IMAGE_TIMEOUT_ENV} must be a positive integer`))
+  }
+
   // Validate imageOutputDir (basic check - non-empty string)
   if (!config.imageOutputDir || config.imageOutputDir.trim().length === 0) {
     return Err(
@@ -161,6 +192,10 @@ export function getConfig(): Result<Config, ConfigError> {
   const imageModel = readEnv('OPENROUTER_IMAGE_MODEL') || DEFAULT_CONFIG.imageModel
   const appUrl = readEnv('OPENROUTER_APP_URL')
   const appTitle = readEnv('OPENROUTER_APP_TITLE')
+  const imageTimeout = parseImageTimeout(readEnv(IMAGE_TIMEOUT_ENV))
+  if (!imageTimeout.success) {
+    return imageTimeout
+  }
 
   const config: Config = {
     openrouterApiKey: readEnv('OPENROUTER_API_KEY') || '',
@@ -170,6 +205,7 @@ export function getConfig(): Result<Config, ConfigError> {
     imageModelHq: readEnv('OPENROUTER_IMAGE_MODEL_HQ') || imageModel,
     imageOutputDir: readEnv('IMAGE_OUTPUT_DIR') || DEFAULT_CONFIG.imageOutputDir,
     apiTimeout: DEFAULT_CONFIG.apiTimeout,
+    imageApiTimeout: imageTimeout.data,
     skipPromptEnhancement: readEnv('SKIP_PROMPT_ENHANCEMENT') === 'true',
     imageQuality: (readEnv('IMAGE_QUALITY') || 'fast') as ImageQuality,
     // Default on; only an explicit "false" disables the inline preview.

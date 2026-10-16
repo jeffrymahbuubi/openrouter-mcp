@@ -32,6 +32,27 @@ export type AspectRatio =
 export type ImageSize = '1K' | '2K' | '4K'
 
 /**
+ * Output file formats a caller may request (honoured only when the model accepts them)
+ */
+export type OutputFormat = 'png' | 'jpeg' | 'webp'
+
+/**
+ * Supported output format values
+ */
+export const OUTPUT_FORMAT_VALUES: readonly OutputFormat[] = ['png', 'jpeg', 'webp'] as const
+
+/**
+ * Named generation presets. `diagram` is for text-exact figures: it skips
+ * prompt enhancement and asks for the quality tier, a PNG and an opaque background.
+ */
+export type GenerationPreset = 'diagram'
+
+/**
+ * Supported preset values
+ */
+export const PRESET_VALUES: readonly GenerationPreset[] = ['diagram'] as const
+
+/**
  * Quality presets for image generation
  * - 'fast': Nano Banana 2, fastest generation (default)
  * - 'balanced': Nano Banana 2 with enhanced thinking, better quality
@@ -87,6 +108,10 @@ export interface GenerateImageParams {
   purpose?: string
   /** Quality preset for image generation (default: "fast"). Controls model selection and thinking configuration */
   quality?: ImageQuality
+  /** Output file format (png, jpeg, webp); honoured only when the model accepts it */
+  outputFormat?: OutputFormat
+  /** Named preset; "diagram" is for text-exact figures */
+  preset?: GenerationPreset
 }
 
 /**
@@ -138,8 +163,16 @@ export interface StructuredContent {
   metadata: {
     model: string
     provider?: string
+    /** Same value as `durationMs`; kept for existing readers. */
     processingTime: number
+    durationMs: number
     contextMethod: string
     timestamp: string
+    width?: number
+    height?: number
+    format: string
+    requested: { aspectRatio: string | null; imageSize: string | null }
+    delivered: { aspectRatio: string | null; imageSize: string | null }
+    warnings: string[]
   }
 }

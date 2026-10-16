@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { GeminiAPIError } from '../errors'
+import { GeminiAPIError, TimeoutError } from '../errors'
 
 describe('GeminiAPIError', () => {
   describe('suggestion getter', () => {
@@ -40,5 +40,16 @@ describe('GeminiAPIError', () => {
       // Act & Assert
       expect(error.suggestion).toBe(customSuggestion)
     })
+  })
+})
+
+describe('TimeoutError', () => {
+  it('carries TIMEOUT_ERROR, timeoutMs context and an actionable suggestion', () => {
+    const error = new TimeoutError('Image request timed out', 30000)
+
+    expect(error.code).toBe('TIMEOUT_ERROR')
+    expect(error.context?.['timeoutMs']).toBe(30000)
+    expect(error.suggestion).toContain('OPENROUTER_IMAGE_TIMEOUT_MS')
+    expect(error.suggestion).toContain('30000')
   })
 })

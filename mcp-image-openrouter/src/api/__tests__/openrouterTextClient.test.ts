@@ -31,6 +31,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     imageModelHq: 'google/gemini-3-pro-image',
     imageOutputDir: './output',
     apiTimeout: 30000,
+    imageApiTimeout: 180000,
     skipPromptEnhancement: false,
     imageQuality: 'fast',
     ...overrides,

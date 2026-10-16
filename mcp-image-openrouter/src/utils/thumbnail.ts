@@ -1,10 +1,11 @@
 /**
- * Thumbnail preview generator.
+ * Image analysis: decoded dimensions plus an optional thumbnail preview, both
+ * from a single decode.
  *
- * Produces a small, downscaled JPEG (base64) from a generated image so MCP
- * clients (e.g. Claude Desktop) can render an inline preview, while the
- * full-resolution image is still written to disk. Kept well under MCP response
- * size limits — the full image is never returned inline.
+ * The preview is a small, downscaled JPEG (base64) so MCP clients (e.g. Claude
+ * Desktop) can render an inline preview, while the full-resolution image is
+ * still written to disk. Kept well under MCP response size limits — the full
+ * image is never returned inline.
  *
  * Uses `jimp` (pure JS, no native binaries) so it works everywhere the package
  * is installed via npx.
@@ -22,28 +23,43 @@ const THUMBNAIL_JPEG_QUALITY = 60
 /**
  * A base64-encoded inline image preview (no `data:` prefix).
  */
-export interface ThumbnailPreview {
+interface ThumbnailPreview {
   data: string
   mimeType: string
 }
 
 /**
- * Generate a downscaled JPEG preview from raw image bytes.
- * Best-effort: returns an error Result on any decode/encode failure so callers
- * can omit the preview without failing the whole request.
+ * Decoded source dimensions plus the optional inline preview.
  */
-export async function generateThumbnail(
-  imageData: Buffer
-): Promise<Result<ThumbnailPreview, Error>> {
+export interface ImageAnalysis {
+  width: number
+  height: number
+  preview?: ThumbnailPreview
+}
+
+/**
+ * Decode raw image bytes once and report their pixel size, plus a downscaled
+ * JPEG preview when `withPreview` is set.
+ * Best-effort: returns an error Result on any decode/encode failure so callers
+ * can omit the size and preview without failing the whole request.
+ */
+export async function analyzeImage(
+  imageData: Buffer,
+  options: { withPreview: boolean }
+): Promise<Result<ImageAnalysis, Error>> {
   try {
     const image = await Jimp.fromBuffer(imageData)
+    const { width, height } = image
+    if (!options.withPreview) {
+      return Ok({ width, height })
+    }
     // Only downscale — `scaleToFit` would otherwise upscale images smaller than the box.
-    if (Math.max(image.width, image.height) > THUMBNAIL_MAX_DIM) {
+    if (Math.max(width, height) > THUMBNAIL_MAX_DIM) {
       image.scaleToFit({ w: THUMBNAIL_MAX_DIM, h: THUMBNAIL_MAX_DIM })
     }
     const jpeg = await image.getBuffer('image/jpeg', { quality: THUMBNAIL_JPEG_QUALITY })
-    return Ok({ data: jpeg.toString('base64'), mimeType: 'image/jpeg' })
+    return Ok({ width, height, preview: { data: jpeg.toString('base64'), mimeType: 'image/jpeg' } })
   } catch (error) {
-    return Err(error instanceof Error ? error : new Error('Thumbnail generation failed'))
+    return Err(error instanceof Error ? error : new Error('Image analysis failed'))
   }
 }

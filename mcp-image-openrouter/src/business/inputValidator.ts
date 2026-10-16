@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs'
 import { extname } from 'node:path'
 import type { AspectRatio, GenerateImageParams } from '../types/mcp.js'
-import { IMAGE_QUALITY_VALUES } from '../types/mcp.js'
+import { IMAGE_QUALITY_VALUES, OUTPUT_FORMAT_VALUES, PRESET_VALUES } from '../types/mcp.js'
 import type { Result } from '../types/result.js'
 import { Err, Ok } from '../types/result.js'
 import { InputValidationError } from '../utils/errors.js'
@@ -236,6 +236,26 @@ export function validateGenerateImageParams(
       new InputValidationError(
         `Invalid quality value: "${params.quality}". Supported values: ${SUPPORTED_QUALITY_VALUES.join(', ')}`,
         `Please use one of the supported quality values: ${SUPPORTED_QUALITY_VALUES.join(', ')}`
+      )
+    )
+  }
+
+  // Validate outputFormat parameter
+  if (params.outputFormat !== undefined && !OUTPUT_FORMAT_VALUES.includes(params.outputFormat)) {
+    return Err(
+      new InputValidationError(
+        `Invalid outputFormat value: "${params.outputFormat}". Supported values: ${OUTPUT_FORMAT_VALUES.join(', ')}`,
+        `Please use one of the supported output formats: ${OUTPUT_FORMAT_VALUES.join(', ')}`
+      )
+    )
+  }
+
+  // Validate preset parameter
+  if (params.preset !== undefined && !PRESET_VALUES.includes(params.preset)) {
+    return Err(
+      new InputValidationError(
+        `Invalid preset value: "${params.preset}". Supported values: ${PRESET_VALUES.join(', ')}`,
+        `Please use one of the supported presets: ${PRESET_VALUES.join(', ')}`
       )
     )
   }

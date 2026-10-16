@@ -1,6 +1,15 @@
-import type { AspectRatio, ImageQuality, ImageSize } from '../types/mcp.js'
+import type { AspectRatio, ImageQuality, ImageSize, OutputFormat } from '../types/mcp.js'
 import type { Result } from '../types/result.js'
-import type { GeminiAPIError, ImageAPIError, NetworkError } from '../utils/errors.js'
+import type { GeminiAPIError, ImageAPIError, NetworkError, TimeoutError } from '../utils/errors.js'
+
+/**
+ * Aspect ratio and size as requested by the caller, or as actually delivered
+ * to the provider. `null` means not requested / dropped / folded into the prompt.
+ */
+export interface ParameterReport {
+  aspectRatio: string | null
+  imageSize: string | null
+}
 
 /**
  * Provider-neutral metadata for generated images.
@@ -15,6 +24,15 @@ interface ImageGenerationMetadata {
   modelVersion?: string
   responseId?: string
   revisedPrompt?: string
+  /** Wall-clock request duration in ms (fetch plus body decode). */
+  durationMs: number
+  /** Delivered pixel size; stamped by the server after decoding the image. */
+  width?: number
+  height?: number
+  requested: ParameterReport
+  delivered: ParameterReport
+  /** Human-readable notes on every mapped, dropped or folded parameter. */
+  warnings: string[]
 }
 
 /**
@@ -28,6 +46,14 @@ export interface ImageApiParams {
   imageSize?: ImageSize
   useGoogleSearch?: boolean
   quality?: ImageQuality
+  /** Requested file format; sent as `output_format` only when the model accepts it. */
+  outputFormat?: OutputFormat
+  /** True only when the caller (not a preset default) supplied `outputFormat`. */
+  outputFormatExplicit?: boolean
+  /** Requested background; sent natively when supported, else a prompt hint. */
+  background?: 'opaque'
+  /** Test-only override of the OpenRouter `quality` value on the quality tier. */
+  openrouterQuality?: 'low' | 'medium' | 'high'
 }
 
 /**
@@ -44,5 +70,7 @@ export interface GeneratedImageResult {
 export interface ImageClient {
   generateImage(
     params: ImageApiParams
-  ): Promise<Result<GeneratedImageResult, GeminiAPIError | ImageAPIError | NetworkError>>
+  ): Promise<
+    Result<GeneratedImageResult, GeminiAPIError | ImageAPIError | NetworkError | TimeoutError>
+  >
 }

@@ -9,6 +9,7 @@ import {
   GeminiAPIError,
   InputValidationError,
   NetworkError,
+  TimeoutError,
 } from '../../utils/errors'
 import { ErrorHandler } from '../errorHandler'
 
@@ -75,6 +76,15 @@ describe('ErrorHandler', () => {
       })
       expect(response.content[0].text).toContain('API quota exceeded')
       expect(response.content[0].text).toContain('Check GEMINI_API_KEY environment variable')
+    })
+
+    it('should keep TIMEOUT_ERROR (not INTERNAL_ERROR) for a TimeoutError', () => {
+      const response = ErrorHandler.handleError(new TimeoutError('Image request timed out', 45000))
+
+      expect(response.isError).toBe(true)
+      const parsed = JSON.parse(response.content[0].text)
+      expect(parsed.error.code).toBe('TIMEOUT_ERROR')
+      expect(parsed.error.details.timeoutMs).toBe(45000)
     })
 
     it('should handle NetworkError correctly', () => {

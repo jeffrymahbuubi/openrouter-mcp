@@ -9,8 +9,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import {
   CallToolRequestSchema,
   type CallToolResult,
+  ErrorCode,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
   type ListToolsResult,
+  McpError,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 // API clients
 import type { ImageClient } from '../api/imageClient.js'
@@ -19,6 +23,7 @@ import { createOpenRouterTextClient } from '../api/openrouterTextClient.js'
 import type { TextClient } from '../api/textClient.js'
 // Business logic
 import { createFileManager, type FileManager } from '../business/fileManager.js'
+import { applyDiagramPreset } from '../business/generationPresets.js'
 import { validateGenerateImageParams } from '../business/inputValidator.js'
 import {
   createResponseBuilder,
@@ -30,6 +35,7 @@ import {
   type FeatureFlags,
   type StructuredPromptGenerator,
 } from '../business/structuredPromptGenerator.js'
+import { MODEL_GUIDE_MARKDOWN } from '../guide/modelGuide.js'
 // Types
 import type { GenerateImageParams, MCPServerConfig } from '../types/mcp.js'
 
@@ -38,8 +44,14 @@ import { getConfig } from '../utils/config.js'
 import { Logger } from '../utils/logger.js'
 import { ensureExtension, getMimeTypeFromExtension } from '../utils/mimeUtils.js'
 import { SecurityManager } from '../utils/security.js'
-import { generateThumbnail } from '../utils/thumbnail.js'
+import { analyzeImage } from '../utils/thumbnail.js'
 import { ErrorHandler } from './errorHandler.js'
+import {
+  GENERATE_IMAGE_TOOL,
+  GET_MODEL_GUIDE_TOOL,
+  GUIDE_RESOURCE,
+  GUIDE_RESOURCE_URI,
+} from './toolDefinitions.js'
 
 /**
  * Default MCP server configuration
@@ -86,91 +98,25 @@ export class MCPServerImpl {
    * Get list of registered tools
    */
   public getToolsList() {
+    return { tools: [GENERATE_IMAGE_TOOL, GET_MODEL_GUIDE_TOOL] }
+  }
+
+  /**
+   * Get list of registered resources
+   */
+  public listResources() {
+    return { resources: [GUIDE_RESOURCE] }
+  }
+
+  /**
+   * Read a registered resource; an unknown URI is a JSON-RPC invalid-params error.
+   */
+  public readResource(uri: string) {
+    if (uri !== GUIDE_RESOURCE_URI) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: ${uri}`)
+    }
     return {
-      tools: [
-        {
-          name: 'generate_image',
-          description: 'Generate image with specified prompt and optional parameters',
-          inputSchema: {
-            type: 'object' as const,
-            properties: {
-              prompt: {
-                type: 'string' as const,
-                description:
-                  'The prompt for image generation (English recommended for optimal structured prompt enhancement)',
-              },
-              fileName: {
-                type: 'string' as const,
-                description:
-                  'Custom file name for the output image. Auto-generated if not specified.',
-              },
-              inputImagePath: {
-                type: 'string' as const,
-                description:
-                  'Optional absolute path to source image for image-to-image generation. Use when generating variations, style transfers, or similar images based on an existing image (must be an absolute path)',
-              },
-              blendImages: {
-                type: 'boolean' as const,
-                description:
-                  'Enable multi-image blending for combining multiple visual elements naturally. Use when prompt mentions multiple subjects or composite scenes',
-              },
-              maintainCharacterConsistency: {
-                type: 'boolean' as const,
-                description:
-                  'Maintain character appearance consistency. Enable when generating same character in different poses/scenes',
-              },
-              useWorldKnowledge: {
-                type: 'boolean' as const,
-                description:
-                  'Use real-world knowledge for accurate context. Enable for historical figures, landmarks, or factual scenarios',
-              },
-              useGoogleSearch: {
-                type: 'boolean' as const,
-                description:
-                  "Enable Google Search grounding to access real-time web information for factually accurate image generation. Use when prompt requires current or time-sensitive data that may have changed since the model's knowledge cutoff. Leave disabled for creative, fictional, historical, or timeless content.",
-              },
-              aspectRatio: {
-                type: 'string' as const,
-                description: 'Aspect ratio for the generated image',
-                enum: [
-                  '1:1',
-                  '1:4',
-                  '1:8',
-                  '2:3',
-                  '3:2',
-                  '3:4',
-                  '4:1',
-                  '4:3',
-                  '4:5',
-                  '5:4',
-                  '8:1',
-                  '9:16',
-                  '16:9',
-                  '21:9',
-                ],
-              },
-              imageSize: {
-                type: 'string' as const,
-                description:
-                  'Image resolution for high-quality output. Specify "1K", "2K", or "4K" when you need specific resolution. Leave unspecified for standard quality.',
-                enum: ['1K', '2K', '4K'],
-              },
-              purpose: {
-                type: 'string' as const,
-                description:
-                  'Intended use for the image (e.g., cookbook cover, social media post, presentation slide). Influences lighting, composition, and detail level to match the context.',
-              },
-              quality: {
-                type: 'string' as const,
-                description:
-                  'Quality preset controlling speed/fidelity tradeoff. Only specify when the user explicitly requests a specific quality level; omit to use the server\'s configured default. "fast": best for drafts and rapid iteration. "balanced": better detail and coherence, moderate latency. "quality": highest fidelity, use for final deliverables where quality matters most.',
-                enum: ['fast', 'balanced', 'quality'],
-              },
-            },
-            required: ['prompt'],
-          },
-        },
-      ],
+      contents: [{ uri, mimeType: GUIDE_RESOURCE.mimeType, text: MODEL_GUIDE_MARKDOWN }],
     }
   }
 
@@ -181,6 +127,9 @@ export class MCPServerImpl {
     try {
       if (name === 'generate_image') {
         return await this.handleGenerateImage(args as GenerateImageParams)
+      }
+      if (name === 'get_model_guide') {
+        return { content: [{ type: 'text' as const, text: MODEL_GUIDE_MARKDOWN }], isError: false }
       }
       throw new Error(`Unknown tool: ${name}`)
     } catch (error) {
@@ -269,9 +218,15 @@ export class MCPServerImpl {
         inputImageMimeType = getMimeTypeFromExtension(path.extname(sanitizedInputPath.data))
       }
 
+      // The diagram preset sends the caller's prompt verbatim (text-exact figures).
+      const preset = params.preset === 'diagram' ? applyDiagramPreset(params) : undefined
+      const skipEnhancement = configResult.data.skipPromptEnhancement || preset !== undefined
+      const quality = preset?.quality ?? params.quality
+      const outputFormat = preset?.outputFormat ?? params.outputFormat
+
       // Generate structured prompt (unless skipped)
       let structuredPrompt = params.prompt
-      if (!configResult.data.skipPromptEnhancement && this.structuredPromptGenerator) {
+      if (!skipEnhancement && this.structuredPromptGenerator) {
         const features: FeatureFlags = {}
         if (params.maintainCharacterConsistency !== undefined) {
           features.maintainCharacterConsistency = params.maintainCharacterConsistency
@@ -307,8 +262,10 @@ export class MCPServerImpl {
             error: promptResult.error.message,
           })
         }
-      } else if (configResult.data.skipPromptEnhancement) {
-        this.logger.info('mcp-server', 'Prompt enhancement skipped (SKIP_PROMPT_ENHANCEMENT=true)')
+      } else if (skipEnhancement) {
+        this.logger.info('mcp-server', 'Prompt enhancement skipped', {
+          reason: preset ? 'preset diagram' : 'SKIP_PROMPT_ENHANCEMENT=true',
+        })
       }
 
       // Generate image using selected provider.
@@ -323,7 +280,12 @@ export class MCPServerImpl {
         ...(params.aspectRatio && { aspectRatio: params.aspectRatio }),
         ...(params.imageSize && { imageSize: params.imageSize }),
         ...(params.useGoogleSearch !== undefined && { useGoogleSearch: params.useGoogleSearch }),
-        ...(params.quality !== undefined && { quality: params.quality }),
+        ...(quality !== undefined && { quality }),
+        ...(outputFormat !== undefined && {
+          outputFormat,
+          outputFormatExplicit: params.outputFormat !== undefined,
+        }),
+        ...(preset && { background: preset.background }),
       })
 
       if (!generationResult.success) {
@@ -351,26 +313,32 @@ export class MCPServerImpl {
         throw saveResult.error
       }
 
-      // Best-effort inline preview so MCP clients can render the image; the
+      // Best-effort: one decode yields the delivered pixel size and, when
+      // enabled, an inline preview so MCP clients can render the image. The
       // full-resolution file on disk is unaffected if this fails.
       let preview: InlinePreview | undefined
-      if (configResult.data.inlinePreview) {
-        const thumbnail = await generateThumbnail(generationResult.data.imageData)
-        if (thumbnail.success) {
-          preview = thumbnail.data
-        } else {
-          this.logger.warn('mcp-server', 'Inline preview generation failed; returning path only', {
-            error: thumbnail.error.message,
-          })
+      let delivered = generationResult.data
+      const analysis = await analyzeImage(generationResult.data.imageData, {
+        withPreview: configResult.data.inlinePreview,
+      })
+      if (analysis.success) {
+        preview = analysis.data.preview
+        delivered = {
+          ...generationResult.data,
+          metadata: {
+            ...generationResult.data.metadata,
+            width: analysis.data.width,
+            height: analysis.data.height,
+          },
         }
+      } else {
+        this.logger.warn('mcp-server', 'Image analysis failed; returning path only', {
+          error: analysis.error.message,
+        })
       }
 
       // Build response
-      return this.responseBuilder.buildSuccessResponse(
-        generationResult.data,
-        saveResult.data,
-        preview
-      )
+      return this.responseBuilder.buildSuccessResponse(delivered, saveResult.data, preview)
     }, 'image-generation')
 
     if (result.ok) {
@@ -392,6 +360,7 @@ export class MCPServerImpl {
       {
         capabilities: {
           tools: {},
+          resources: {},
         },
       }
     )
@@ -414,6 +383,12 @@ export class MCPServerImpl {
     this.server.setRequestHandler(ListToolsRequestSchema, async (): Promise<ListToolsResult> => {
       return this.getToolsList()
     })
+
+    // Register resource handlers (the bundled model guide)
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => this.listResources())
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) =>
+      this.readResource(request.params.uri)
+    )
 
     // Register tool call handler
     this.server.setRequestHandler(

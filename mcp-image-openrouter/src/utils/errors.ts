@@ -289,6 +289,25 @@ export class NetworkError extends BaseError {
 }
 
 /**
+ * Error for requests aborted because they exceeded the configured timeout.
+ * Distinct from NetworkError so callers can branch on `TIMEOUT_ERROR`.
+ */
+export class TimeoutError extends BaseError {
+  readonly code = 'TIMEOUT_ERROR'
+
+  constructor(
+    message: string,
+    public readonly timeoutMs: number
+  ) {
+    super(message, { timeoutMs })
+  }
+
+  get suggestion(): string {
+    return `Raise OPENROUTER_IMAGE_TIMEOUT_MS (currently ${this.timeoutMs} ms); GPT image models typically need 60-120 s`
+  }
+}
+
+/**
  * Error for configuration failures
  */
 export class ConfigError extends BaseError {

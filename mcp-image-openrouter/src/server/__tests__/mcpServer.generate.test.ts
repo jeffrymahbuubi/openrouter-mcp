@@ -54,6 +54,10 @@ const METADATA = {
   mimeType: 'image/png',
   timestamp: new Date('2026-07-11T00:00:00.000Z'),
   inputImageProvided: false,
+  durationMs: 4321,
+  requested: { aspectRatio: null, imageSize: null },
+  delivered: { aspectRatio: null, imageSize: null },
+  warnings: [] as string[],
 }
 
 // A real PNG so the (real) thumbnail generator can produce an inline preview.
@@ -183,5 +187,126 @@ describe('generate_image flow', () => {
 
     expect(result.isError).toBe(false)
     expect(result.content.find((c) => c.type === 'image')).toBeUndefined()
+  })
+
+  it('returns real duration, decoded width/height, format and mapping report', async () => {
+    mockGenerateImage.mockResolvedValue(
+      Ok({
+        imageData: realPng,
+        metadata: {
+          ...METADATA,
+          requested: { aspectRatio: '16:9', imageSize: '4K' },
+          delivered: { aspectRatio: '3:2', imageSize: null },
+          warnings: ['aspectRatio 16:9 mapped to 3:2'],
+        },
+      })
+    )
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_image', { prompt: 'a cat' })
+
+    const { metadata } = parseResponse(result)
+    expect(metadata.width).toBe(600)
+    expect(metadata.height).toBe(400)
+    expect(metadata.durationMs).toBe(4321)
+    expect(metadata.processingTime).toBe(4321)
+    expect(metadata.format).toBe('png')
+    expect(metadata.requested).toEqual({ aspectRatio: '16:9', imageSize: '4K' })
+    expect(metadata.delivered).toEqual({ aspectRatio: '3:2', imageSize: null })
+    expect(metadata.warnings).toEqual(['aspectRatio 16:9 mapped to 3:2'])
+  })
+
+  it('still reports width/height when the inline preview is disabled', async () => {
+    process.env.IMAGE_INLINE_PREVIEW = 'false'
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_image', { prompt: 'a cat' })
+
+    const { metadata } = parseResponse(result)
+    expect(metadata.width).toBe(600)
+    expect(metadata.height).toBe(400)
+    expect(result.content.find((c) => c.type === 'image')).toBeUndefined()
+  })
+
+  it('succeeds without width/height/preview when the bytes cannot be decoded', async () => {
+    mockGenerateImage.mockResolvedValue(
+      Ok({ imageData: Buffer.from('not an image'), metadata: METADATA })
+    )
+    const server = new MCPServerImpl()
+
+    const result = await server.callTool('generate_image', { prompt: 'a cat' })
+
+    expect(result.isError).toBe(false)
+    const { metadata } = parseResponse(result)
+    expect(metadata).not.toHaveProperty('width')
+    expect(metadata).not.toHaveProperty('height')
+    expect(result.content.find((c) => c.type === 'image')).toBeUndefined()
+  })
+
+  describe('preset diagram and outputFormat', () => {
+    it('skips enhancement, forces the quality tier and requests png + opaque background', async () => {
+      const server = new MCPServerImpl()
+
+      const result = await server.callTool('generate_image', {
+        prompt: 'a flowchart',
+        preset: 'diagram',
+      })
+
+      expect(result.isError).toBe(false)
+      expect(mockGenerateText).not.toHaveBeenCalled()
+      const call = mockGenerateImage.mock.calls[0]?.[0]
+      expect(call).toEqual(
+        expect.objectContaining({
+          prompt: 'a flowchart',
+          quality: 'quality',
+          outputFormat: 'png',
+          background: 'opaque',
+        })
+      )
+      expect(call.outputFormatExplicit).not.toBe(true)
+    })
+
+    it('lets an explicit quality and outputFormat win and marks the format explicit', async () => {
+      const server = new MCPServerImpl()
+
+      await server.callTool('generate_image', {
+        prompt: 'a flowchart',
+        preset: 'diagram',
+        quality: 'fast',
+        outputFormat: 'jpeg',
+      })
+
+      expect(mockGenerateImage.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          quality: 'fast',
+          outputFormat: 'jpeg',
+          outputFormatExplicit: true,
+          background: 'opaque',
+        })
+      )
+    })
+
+    it('passes a caller outputFormat without a preset and sends no background', async () => {
+      const server = new MCPServerImpl()
+
+      await server.callTool('generate_image', { prompt: 'a cat', outputFormat: 'webp' })
+
+      const call = mockGenerateImage.mock.calls[0]?.[0]
+      expect(call).toEqual(
+        expect.objectContaining({ outputFormat: 'webp', outputFormatExplicit: true })
+      )
+      expect(call.background).toBeUndefined()
+      expect(mockGenerateText).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects an unknown preset with INPUT_VALIDATION_ERROR', async () => {
+      const server = new MCPServerImpl()
+
+      const result = await server.callTool('generate_image', { prompt: 'a cat', preset: 'poster' })
+
+      expect(result.isError).toBe(true)
+      expect(parseResponse(result).error.code).toBe('INPUT_VALIDATION_ERROR')
+      expect(mockGenerateImage).not.toHaveBeenCalled()
+    })
   })
 })

@@ -299,6 +299,38 @@ describe('inputValidator', () => {
     })
   })
 
+  describe('validateGenerateImageParams with outputFormat and preset', () => {
+    it.each(['png', 'jpeg', 'webp'] as const)('should accept outputFormat %s', (outputFormat) => {
+      expect(validateGenerateImageParams({ prompt: 'test', outputFormat }).success).toBe(true)
+    })
+
+    it('should reject an unknown outputFormat', () => {
+      const result = validateGenerateImageParams({ prompt: 'test', outputFormat: 'gif' as any })
+
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.code).toBe('INPUT_VALIDATION_ERROR')
+        expect(result.error.message).toContain('outputFormat')
+        expect(result.error.message).toContain('png')
+      }
+    })
+
+    it('should accept preset diagram', () => {
+      expect(validateGenerateImageParams({ prompt: 'test', preset: 'diagram' }).success).toBe(true)
+    })
+
+    it('should reject an unknown preset', () => {
+      const result = validateGenerateImageParams({ prompt: 'test', preset: 'poster' as any })
+
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.code).toBe('INPUT_VALIDATION_ERROR')
+        expect(result.error.message).toContain('preset')
+        expect(result.error.message).toContain('diagram')
+      }
+    })
+  })
+
   describe('validateGenerateImageParams with quality', () => {
     it('should accept all valid quality values', () => {
       // Arrange

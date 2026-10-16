@@ -13,6 +13,7 @@ const OPENROUTER_ENV_VARS = [
   'OPENROUTER_IMAGE_MODEL_HQ',
   'OPENROUTER_APP_URL',
   'OPENROUTER_APP_TITLE',
+  'OPENROUTER_IMAGE_TIMEOUT_MS',
   'IMAGE_OUTPUT_DIR',
   'IMAGE_QUALITY',
   'SKIP_PROMPT_ENHANCEMENT',
@@ -28,6 +29,7 @@ function baseConfig() {
     imageModelHq: 'google/gemini-3-pro-image',
     imageOutputDir: './output',
     apiTimeout: 30000,
+    imageApiTimeout: 180000,
     skipPromptEnhancement: false,
     imageQuality: 'fast' as const,
     inlinePreview: true,
@@ -87,6 +89,15 @@ describe('config', () => {
       const result = validateConfig(baseConfig())
       expect(result.success).toBe(true)
     })
+
+    it('rejects a non-positive imageApiTimeout and accepts 1', () => {
+      const bad = validateConfig({ ...baseConfig(), imageApiTimeout: 0 })
+      expect(bad.success).toBe(false)
+      if (!bad.success) {
+        expect(bad.error.message).toContain('OPENROUTER_IMAGE_TIMEOUT_MS')
+      }
+      expect(validateConfig({ ...baseConfig(), imageApiTimeout: 1 }).success).toBe(true)
+    })
   })
 
   describe('getConfig', () => {
@@ -145,6 +156,44 @@ describe('config', () => {
       if (result.success) {
         expect(result.data.skipPromptEnhancement).toBe(true)
         expect(result.data.imageQuality).toBe('quality')
+      }
+    })
+
+    it('defaults imageApiTimeout to 180000 and leaves apiTimeout at 30000', () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-valid-key-12345'
+      const result = getConfig()
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.imageApiTimeout).toBe(180000)
+        expect(result.data.apiTimeout).toBe(30000)
+      }
+    })
+
+    it('reads OPENROUTER_IMAGE_TIMEOUT_MS without touching apiTimeout', () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-valid-key-12345'
+      process.env.OPENROUTER_IMAGE_TIMEOUT_MS = ' 90000 '
+      const result = getConfig()
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.imageApiTimeout).toBe(90000)
+        expect(result.data.apiTimeout).toBe(30000)
+      }
+    })
+
+    it.each([
+      'abc',
+      '0',
+      '-5',
+      '12.5',
+    ])('rejects OPENROUTER_IMAGE_TIMEOUT_MS=%s with a ConfigError naming the variable', (value) => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-valid-key-12345'
+      process.env.OPENROUTER_IMAGE_TIMEOUT_MS = value
+      const result = getConfig()
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.code).toBe('CONFIG_ERROR')
+        expect(result.error.message).toContain('OPENROUTER_IMAGE_TIMEOUT_MS')
+        expect(result.error.suggestion).toContain('180000')
       }
     })
 

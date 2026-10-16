@@ -10,8 +10,23 @@ import {
   GeminiAPIError,
   InputValidationError,
   NetworkError,
+  TimeoutError,
 } from '../../utils/errors'
 import { createResponseBuilder, type ResponseBuilder } from '../responseBuilder'
+
+const TRACKED_METADATA: GeneratedImageResult['metadata'] = {
+  model: 'gemini-3.1-flash-image-preview',
+  prompt: 'test prompt',
+  mimeType: 'image/png',
+  timestamp: new Date('2025-08-28T12:00:00Z'),
+  inputImageProvided: false,
+  durationMs: 2345,
+  width: 1536,
+  height: 1024,
+  requested: { aspectRatio: '16:9', imageSize: '4K' },
+  delivered: { aspectRatio: '3:2', imageSize: null },
+  warnings: ['aspectRatio 16:9 mapped to 3:2'],
+}
 
 describe('ResponseBuilder', () => {
   let responseBuilder: ResponseBuilder
@@ -25,13 +40,7 @@ describe('ResponseBuilder', () => {
       const testImageData = Buffer.from('fake-image-data')
       const generationResult: GeneratedImageResult = {
         imageData: testImageData,
-        metadata: {
-          model: 'gemini-3.1-flash-image-preview',
-          prompt: 'test prompt',
-          mimeType: 'image/png',
-          timestamp: new Date('2025-08-28T12:00:00Z'),
-          inputImageProvided: false,
-        },
+        metadata: TRACKED_METADATA,
       }
       const testFilePath = '/path/to/generated-image.png'
 
@@ -48,10 +57,48 @@ describe('ResponseBuilder', () => {
       expect(contentData.resource.mimeType).toBe('image/png')
       expect(contentData.metadata).toEqual({
         model: generationResult.metadata.model,
-        processingTime: 0,
+        processingTime: 2345,
+        durationMs: 2345,
         contextMethod: 'structured_prompt',
         timestamp: generationResult.metadata.timestamp.toISOString(),
+        width: 1536,
+        height: 1024,
+        format: 'png',
+        requested: { aspectRatio: '16:9', imageSize: '4K' },
+        delivered: { aspectRatio: '3:2', imageSize: null },
+        warnings: ['aspectRatio 16:9 mapped to 3:2'],
       })
+    })
+
+    it.each([
+      ['image/png', 'png'],
+      ['image/jpeg', 'jpeg'],
+      ['image/webp', 'webp'],
+    ])('reports format from mimeType %s as %s', (mimeType, format) => {
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('x'),
+        metadata: { ...TRACKED_METADATA, mimeType },
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.bin')
+
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.metadata.format).toBe(format)
+    })
+
+    it('omits width and height when they are not known', () => {
+      const { width: _w, height: _h, ...withoutSize } = TRACKED_METADATA
+      const generationResult: GeneratedImageResult = {
+        imageData: Buffer.from('x'),
+        metadata: withoutSize,
+      }
+
+      const response = responseBuilder.buildSuccessResponse(generationResult, '/path/to/image.png')
+
+      const contentData = JSON.parse(response.content[0].text)
+      expect(contentData.metadata).not.toHaveProperty('width')
+      expect(contentData.metadata).not.toHaveProperty('height')
+      expect(contentData.metadata.durationMs).toBe(2345)
     })
 
     it('should use metadata MIME type image/jpeg when available', () => {
@@ -158,6 +205,18 @@ describe('ResponseBuilder', () => {
   })
 
   describe('buildErrorResponse', () => {
+    it('should create error response for TimeoutError with details.timeoutMs', () => {
+      const error = new TimeoutError('Image request timed out', 45000)
+
+      const response = responseBuilder.buildErrorResponse(error)
+
+      expect(response.isError).toBe(true)
+      const errorData = JSON.parse(response.content[0].text)
+      expect(errorData.error.code).toBe('TIMEOUT_ERROR')
+      expect(errorData.error.suggestion).toContain('OPENROUTER_IMAGE_TIMEOUT_MS')
+      expect(errorData.error.details.timeoutMs).toBe(45000)
+    })
+
     it('should create error response for InputValidationError', () => {
       const error = new InputValidationError(
         'Invalid prompt provided',
